@@ -20,6 +20,11 @@ export interface BatchSummary {
 export async function getBatches(): Promise<BatchSummary[]> {
   await requireSession();
 
+  const url = process.env.DATABASE_URL;
+  if (!url || url.includes("ep-sample-pooler")) {
+    return [];
+  }
+
   try {
     const rows = await db
       .select({
@@ -39,17 +44,18 @@ export async function getBatches(): Promise<BatchSummary[]> {
     return rows;
   } catch (err: unknown) {
     const error = err as Error;
-    console.error("[getBatches Error]:", error?.message || error);
-    // If DATABASE_URL is not yet connected to a live database
-    if (error?.message?.includes("ENOTFOUND") || error?.message?.includes("ep-sample-pooler")) {
-      return [];
-    }
-    throw new Error("Gagal memuat daftar batch: " + (error?.message || "Kesalahan database"));
+    console.warn("[getBatches Warning]: Database belum dapat dihubungi:", error?.message || error);
+    return [];
   }
 }
 
 export async function getBatchById(id: string) {
   await requireSession();
+
+  const url = process.env.DATABASE_URL;
+  if (!url || url.includes("ep-sample-pooler")) {
+    return null;
+  }
 
   try {
     const [batch] = await db.select().from(batches).where(eq(batches.id, id)).limit(1);
@@ -68,16 +74,25 @@ export async function getBatchById(id: string) {
     };
   } catch (err: unknown) {
     const error = err as Error;
-    console.error("[getBatchById Error]:", error?.message || error);
-    if (error?.message?.includes("ENOTFOUND") || error?.message?.includes("ep-sample-pooler")) {
-      return null;
-    }
-    throw new Error("Gagal mengambil rincian batch.");
+    console.warn(
+      "[getBatchById Warning]: Database belum dapat dihubungi:",
+      error?.message || error
+    );
+    return null;
   }
 }
 
 export async function createBatch(data: { name: string }) {
   await requireSession();
+
+  const url = process.env.DATABASE_URL;
+  if (!url || url.includes("ep-sample-pooler")) {
+    return {
+      success: false,
+      error:
+        "Database Neon belum dikonfigurasi. Harap masukkan connection string DATABASE_URL aktif ke file .env.local terlebih dahulu.",
+    };
+  }
 
   const validation = batchSchema.safeParse(data);
   if (!validation.success) {

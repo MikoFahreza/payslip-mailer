@@ -10,6 +10,15 @@ import { revalidatePath } from "next/cache";
 export async function addRecipient(batchId: string, data: { name: string; email: string }) {
   await requireSession();
 
+  const url = process.env.DATABASE_URL;
+  if (!url || url.includes("ep-sample-pooler")) {
+    return {
+      success: false,
+      error:
+        "Database Neon belum dikonfigurasi. Harap masukkan connection string DATABASE_URL aktif ke file .env.local terlebih dahulu.",
+    };
+  }
+
   const validation = recipientSchema.safeParse(data);
   if (!validation.success) {
     return {
