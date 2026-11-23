@@ -19,9 +19,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const email = String(credentials.email).trim().toLowerCase();
         const password = String(credentials.password);
 
-        // Rate limit: 5 attempts per 15 minutes per email identifier
+        // Rate limit: 5 in production, 20 in dev per 15 minutes per email
+        const maxAttempts = process.env.NODE_ENV === "production" ? 5 : 20;
         const rateLimitKey = `login:${email}`;
-        const limit = checkRateLimit(rateLimitKey, 5, 15 * 60 * 1000);
+        const limit = checkRateLimit(rateLimitKey, maxAttempts, 15 * 60 * 1000);
         if (!limit.allowed) {
           console.warn(`[Security] Percobaan login melampaui batas untuk: ${email}`);
           throw new Error("TOO_MANY_REQUESTS");
@@ -33,6 +34,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!adminEmail || !adminHash) {
           console.error("[Auth] ADMIN_EMAIL atau ADMIN_PASSWORD_HASH belum dikonfigurasi.");
           return null;
+        }
+
+        if (!adminHash.startsWith("$")) {
+          console.warn(
+            "[Auth Warning] ADMIN_PASSWORD_HASH tidak diawali '$'. " +
+              "Jika disimpan di file .env / .env.local Next.js, pastikan karakter '$' di-escape dengan '\\$' agar tidak terpotong oleh dotenv-expand."
+          );
         }
 
         if (email !== adminEmail) {
