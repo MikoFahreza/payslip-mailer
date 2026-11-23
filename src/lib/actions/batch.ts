@@ -1,11 +1,12 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { batches, recipients } from "@/lib/db/schema";
+import { attachments, batches, recipients } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { batchSchema } from "@/lib/validations/batch";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { del } from "@vercel/blob";
 
 export interface BatchSummary {
   id: string;
@@ -68,9 +69,24 @@ export async function getBatchById(id: string) {
       .where(eq(recipients.batchId, id))
       .orderBy(recipients.createdAt);
 
+    const recipientIds = recipientList.map((r) => r.id);
+    const attachmentList =
+      recipientIds.length > 0
+        ? await db
+            .select()
+            .from(attachments)
+            .where(inArray(attachments.recipientId, recipientIds))
+            .orderBy(attachments.createdAt)
+        : [];
+
+    const recipientsWithAttachments = recipientList.map((r) => ({
+      ...r,
+      attachments: attachmentList.filter((a) => a.recipientId === r.id),
+    }));
+
     return {
       ...batch,
-      recipients: recipientList,
+      recipients: recipientsWithAttachments,
     };
   } catch (err: unknown) {
     const error = err as Error;
@@ -163,6 +179,27 @@ export async function deleteBatch(id: string) {
   await requireSession();
 
   try {
+    // Clean up all Vercel Blob files belonging to recipients in this batch
+    const batchAttachments = await db
+      .select({ blobUrl: attachments.blobUrl })
+      .from(attachments)
+      .innerJoin(recipients, eq(attachments.recipientId, recipients.id))
+      .where(eq(recipients.batchId, id));
+
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (token && !token.includes("sample") && batchAttachments.length > 0) {
+      const urlsToDelete = batchAttachments
+        .map((a) => a.blobUrl)
+        .filter((url) => !url.includes("mock"));
+      if (urlsToDelete.length > 0) {
+        try {
+          await del(urlsToDelete);
+        } catch (blobErr) {
+          console.warn("[deleteBatch Blob Warning]:", blobErr);
+        }
+      }
+    }
+
     const [deleted] = await db.delete(batches).where(eq(batches.id, id)).returning();
 
     if (!deleted) {

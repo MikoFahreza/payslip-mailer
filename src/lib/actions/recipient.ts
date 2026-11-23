@@ -1,11 +1,12 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { recipients } from "@/lib/db/schema";
+import { attachments, recipients } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { recipientSchema } from "@/lib/validations/recipient";
 import { eq, and, ne, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { del } from "@vercel/blob";
 
 export async function addRecipient(batchId: string, data: { name: string; email: string }) {
   await requireSession();
@@ -166,6 +167,29 @@ export async function deleteRecipient(id: string, batchId: string) {
   await requireSession();
 
   try {
+    // 1. Clean up all Vercel Blob files belonging to this recipient
+    const recipientAttachments = await db
+      .select({ blobUrl: attachments.blobUrl })
+      .from(attachments)
+      .where(eq(attachments.recipientId, id));
+
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (token && !token.includes("sample") && recipientAttachments.length > 0) {
+      const urlsToDelete = recipientAttachments
+        .map((a) => a.blobUrl)
+        .filter((url) => !url.includes("mock"));
+      if (urlsToDelete.length > 0) {
+        try {
+          await del(urlsToDelete);
+        } catch (blobErr) {
+          console.warn(
+            "[deleteRecipient Blob Warning]: Gagal menghapus file dari Vercel Blob:",
+            blobErr
+          );
+        }
+      }
+    }
+
     const [deleted] = await db
       .delete(recipients)
       .where(and(eq(recipients.id, id), eq(recipients.batchId, batchId)))

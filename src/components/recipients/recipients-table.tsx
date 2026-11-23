@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Recipient } from "@/lib/db/schema";
+import type { Recipient, Attachment } from "@/lib/db/schema";
 import {
   Table,
   TableBody,
@@ -15,14 +15,17 @@ import { RecipientStatusBadge } from "./recipient-status-badge";
 import { EditRecipientDialog } from "./edit-recipient-dialog";
 import { DeleteRecipientDialog } from "./delete-recipient-dialog";
 import { AddRecipientDialog } from "./add-recipient-dialog";
-import { Search, Users, AlertCircle, FileText } from "lucide-react";
+import { RecipientAttachmentsCell } from "@/components/attachments/recipient-attachments-cell";
+import { Search, Users, AlertCircle } from "lucide-react";
+
+export type RecipientRow = Recipient & { attachments?: Attachment[] };
 
 export function RecipientsTable({
   batchId,
   recipients,
 }: {
   batchId: string;
-  recipients: Recipient[];
+  recipients: RecipientRow[];
 }) {
   const [search, setSearch] = useState("");
 
@@ -119,10 +122,12 @@ export function RecipientsTable({
                     <RecipientStatusBadge status={recipient.status} />
                   </TableCell>
                   <TableCell>
-                    <div className="inline-flex items-center gap-1.5 text-xs text-neutral-400">
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>Upload di Fase 3</span>
-                    </div>
+                    <RecipientAttachmentsCell
+                      batchId={batchId}
+                      recipientId={recipient.id}
+                      recipientName={recipient.name}
+                      attachments={recipient.attachments}
+                    />
                   </TableCell>
                   <TableCell className="text-xs text-neutral-500">
                     {recipient.sentAt ? (
