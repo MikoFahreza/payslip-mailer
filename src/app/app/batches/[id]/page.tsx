@@ -2,19 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getBatchById } from "@/lib/actions/batch";
+import { getDailySendQuota } from "@/lib/actions/send";
 import { RecipientsTable } from "@/components/recipients/recipients-table";
 import { EditBatchDialog } from "@/components/batches/edit-batch-dialog";
 import { DeleteBatchDialog } from "@/components/batches/delete-batch-dialog";
+import { BatchSendControls } from "@/components/recipients/batch-send-controls";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
   Calendar,
-  Send,
   UploadCloud,
   CheckCircle2,
   Clock,
   XCircle,
   AlertTriangle,
+  Mail,
 } from "lucide-react";
 
 interface BatchDetailPageProps {
@@ -38,6 +40,7 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
     notFound();
   }
 
+  const quota = await getDailySendQuota();
   const recipients = batch.recipients;
   const sentCount = recipients.filter((r) => r.status === "sent").length;
   const pendingCount = recipients.filter((r) => r.status === "pending").length;
@@ -70,16 +73,28 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
             </h1>
             <EditBatchDialog batchId={batch.id} currentName={batch.name} />
           </div>
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>
-              Dibuat pada{" "}
-              {new Date(batch.createdAt).toLocaleDateString("id-ID", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
-            </span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-500">
+            <div className="flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>
+                Dibuat pada{" "}
+                {new Date(batch.createdAt).toLocaleDateString("id-ID", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Mail className="w-3.5 h-3.5 text-neutral-400" />
+              <span>
+                Kuota Harian:{" "}
+                <strong className="text-neutral-800 dark:text-neutral-200">
+                  {quota.used} / {quota.max}
+                </strong>{" "}
+                terkirim ({quota.remaining} tersisa)
+              </span>
+            </div>
           </div>
         </div>
 
@@ -92,19 +107,29 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
             </Button>
           </Link>
 
-          <Button
-            size="sm"
-            disabled
-            className="font-medium opacity-80"
-            title="Pengiriman email bertahap akan diaktifkan pada Fase 4"
-          >
-            <Send className="w-4 h-4 mr-2" />
-            Kirim Semua (Fase 4)
-          </Button>
+          <BatchSendControls batchId={batch.id} recipients={recipients} />
 
           <DeleteBatchDialog batchId={batch.id} batchName={batch.name} redirectToApp />
         </div>
       </div>
+
+      {/* Warning Banner for Unknown Status */}
+      {unknownCount > 0 && (
+        <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl text-amber-900 dark:text-amber-200 text-sm">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold">
+              Perhatian: Terdapat {unknownCount} pengiriman dengan status &quot;Tidak Pasti&quot;.
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300/90 leading-relaxed">
+              Koneksi mengalami batas waktu (timeout) setelah permintaan dikirim ke Gmail API. Email
+              mungkin sudah diterima oleh penerima. Periksa kotak terkirim Gmail Anda terlebih
+              dahulu, lalu klik tombol &quot;Selesaikan Status&quot; pada baris penerima yang
+              bersangkutan untuk menandainya sebagai terkirim atau gagal sebelum mengirim ulang.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Summary Chips */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

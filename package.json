@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
-    "db:seed": "tsx src/lib/db/seed.ts"
+    "db:seed": "tsx src/lib/db/seed.ts",
+    "get-gmail-token": "tsx scripts/get-gmail-token.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",
@@ -21,7 +22,9 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.4",
+    "google-auth-library": "^11.3.4",
     "lucide-react": "^1.78.0",
+    "mimetext": "^3.0.28",
     "next": "16.4.6",
     "next-auth": "^5.0.0-beta.32",
     "react": "19.3.0",

@@ -15,6 +15,8 @@ import { RecipientStatusBadge } from "./recipient-status-badge";
 import { EditRecipientDialog } from "./edit-recipient-dialog";
 import { DeleteRecipientDialog } from "./delete-recipient-dialog";
 import { AddRecipientDialog } from "./add-recipient-dialog";
+import { SendSingleButton } from "./send-single-button";
+import { ResolveUnknownDialog } from "./resolve-unknown-dialog";
 import { RecipientAttachmentsCell } from "@/components/attachments/recipient-attachments-cell";
 import { Search, Users, AlertCircle } from "lucide-react";
 
@@ -103,7 +105,7 @@ export function RecipientsTable({
                 <TableHead>Status</TableHead>
                 <TableHead>Lampiran</TableHead>
                 <TableHead>Catatan / Waktu</TableHead>
-                <TableHead className="w-24 text-right">Aksi</TableHead>
+                <TableHead className="w-36 text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -131,7 +133,7 @@ export function RecipientsTable({
                   </TableCell>
                   <TableCell className="text-xs text-neutral-500">
                     {recipient.sentAt ? (
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                         {new Date(recipient.sentAt).toLocaleString("id-ID", {
                           dateStyle: "short",
                           timeStyle: "short",
@@ -150,7 +152,21 @@ export function RecipientsTable({
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {recipient.status === "unknown" ? (
+                        <ResolveUnknownDialog
+                          recipientId={recipient.id}
+                          recipientName={recipient.name}
+                          recipientEmail={recipient.email}
+                          errorMessage={recipient.errorMessage}
+                        />
+                      ) : (
+                        <SendSingleButton
+                          recipientId={recipient.id}
+                          recipientName={recipient.name}
+                          status={recipient.status}
+                        />
+                      )}
                       <EditRecipientDialog recipient={recipient} batchId={batchId} />
                       <DeleteRecipientDialog
                         recipientId={recipient.id}
