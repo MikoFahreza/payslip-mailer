@@ -21,6 +21,7 @@ import {
   type ValidatedImportRow,
 } from "@/lib/validations/import";
 import { importRecipientsBatch } from "@/lib/actions/import";
+import { upsertContactsBatch } from "@/lib/actions/contact";
 import { MAX_RECIPIENTS_PER_BATCH } from "@/lib/validations/recipient";
 import {
   Upload,
@@ -226,6 +227,13 @@ export function BulkImportForm({
         name: r.name,
         email: r.email,
       }));
+
+      // Shortcut: also auto-save/upsert into user contacts book
+      try {
+        await upsertContactsBatch(payload);
+      } catch (cErr) {
+        console.warn("Gagal simpan ke kontak saat impor batch:", cErr);
+      }
 
       const res = await importRecipientsBatch(batchId, payload);
       if (!res.success) {

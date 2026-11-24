@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Recipient, Attachment } from "@/lib/db/schema";
+import type { Recipient, Attachment, Contact } from "@/lib/db/schema";
 import {
   Table,
   TableBody,
@@ -15,6 +15,8 @@ import { RecipientStatusBadge } from "./recipient-status-badge";
 import { EditRecipientDialog } from "./edit-recipient-dialog";
 import { DeleteRecipientDialog } from "./delete-recipient-dialog";
 import { AddRecipientDialog } from "./add-recipient-dialog";
+import { AddFromContactsDialog } from "@/components/batches/add-from-contacts-dialog";
+import { AddAllActiveContactsButton } from "@/components/batches/add-all-active-contacts-button";
 import { SendSingleButton } from "./send-single-button";
 import { ResolveUnknownDialog } from "./resolve-unknown-dialog";
 import { RecipientAttachmentsCell } from "@/components/attachments/recipient-attachments-cell";
@@ -26,10 +28,12 @@ export function RecipientsTable({
   batchId,
   recipients,
   isSimulated = false,
+  contacts = [],
 }: {
   batchId: string;
   recipients: RecipientRow[];
   isSimulated?: boolean;
+  contacts?: Contact[];
 }) {
   const [search, setSearch] = useState("");
 
@@ -56,9 +60,9 @@ export function RecipientsTable({
           />
         </div>
 
-        <div className="flex items-center gap-4 self-end sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
           {/* Quota Counter */}
-          <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+          <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 mr-2">
             <span>Kuota:</span>
             <span className="font-semibold text-neutral-900 dark:text-neutral-100">
               {totalCount} / {maxLimit}
@@ -77,6 +81,12 @@ export function RecipientsTable({
             </div>
           </div>
 
+          <AddFromContactsDialog batchId={batchId} recipients={recipients} contacts={contacts} />
+          <AddAllActiveContactsButton
+            batchId={batchId}
+            currentCount={totalCount}
+            activeContactsCount={contacts.filter((c) => !c.archivedAt).length}
+          />
           <AddRecipientDialog batchId={batchId} currentCount={totalCount} />
         </div>
       </div>

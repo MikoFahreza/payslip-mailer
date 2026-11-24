@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { attachments, recipients } from "@/lib/db/schema";
+import { attachments, recipients, contacts } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { assertOwnsBatch, assertOwnsRecipient, assertOwnsContact } from "@/lib/auth/isolation";
 import { recipientSchema } from "@/lib/validations/recipient";
@@ -11,7 +11,7 @@ import { del } from "@vercel/blob";
 
 export async function addRecipient(
   batchId: string,
-  data: { name: string; email: string; contactId?: string }
+  data: { name: string; email: string; contactId?: string; saveToContacts?: boolean }
 ) {
   const userId = await requireUser();
   await assertOwnsBatch(batchId, userId);
@@ -67,12 +67,45 @@ export async function addRecipient(
       };
     }
 
-    // 3. Insert recipient with 'pending' status
+    // 3. Optional: save to contacts if requested (default true)
+    let contactId = data.contactId || null;
+    if (!contactId && data.saveToContacts !== false) {
+      try {
+        const existingContact = await db.query.contacts.findFirst({
+          where: and(eq(contacts.userId, userId), eq(contacts.email, normalizedEmail)),
+        });
+
+        if (existingContact) {
+          contactId = existingContact.id;
+        } else {
+          const [totalContactsRow] = await db
+            .select({ total: count() })
+            .from(contacts)
+            .where(eq(contacts.userId, userId));
+
+          if ((totalContactsRow?.total || 0) < 200) {
+            const [newContact] = await db
+              .insert(contacts)
+              .values({
+                userId,
+                name: normalizedName,
+                email: normalizedEmail,
+              })
+              .returning();
+            contactId = newContact.id;
+          }
+        }
+      } catch (contactErr) {
+        console.warn("[addRecipient Warning]: Gagal simpan ke kontak:", contactErr);
+      }
+    }
+
+    // 4. Insert recipient with 'pending' status
     const [newRecipient] = await db
       .insert(recipients)
       .values({
         batchId,
-        contactId: data.contactId || null,
+        contactId,
         name: normalizedName,
         email: normalizedEmail,
         status: "pending",

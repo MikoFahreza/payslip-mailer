@@ -27,6 +27,7 @@ export function AddRecipientDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [saveToContacts, setSaveToContacts] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -55,6 +56,7 @@ export function AddRecipientDialog({
       const res = await addRecipient(batchId, {
         name: validation.data.name,
         email: validation.data.email,
+        saveToContacts,
       });
 
       if (!res.success) {
@@ -124,6 +126,19 @@ export function AddRecipientDialog({
                 disabled={isPending}
                 required
               />
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                id="saveToContacts"
+                type="checkbox"
+                checked={saveToContacts}
+                onChange={(e) => setSaveToContacts(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+              <Label htmlFor="saveToContacts" className="text-xs font-normal text-neutral-600 dark:text-neutral-400 cursor-pointer">
+                Simpan ke daftar kontak (aktif secara default)
+              </Label>
             </div>
 
             <DialogFooter>

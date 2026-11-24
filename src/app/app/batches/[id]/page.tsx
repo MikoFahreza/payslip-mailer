@@ -5,9 +5,11 @@ import { getBatchById } from "@/lib/actions/batch";
 import { getDailySendQuota } from "@/lib/actions/send";
 import { requireUser } from "@/lib/auth/session";
 import { getUserGmailStatus } from "@/lib/email";
+import { getContacts } from "@/lib/actions/contact";
 import { RecipientsTable } from "@/components/recipients/recipients-table";
 import { EditBatchDialog } from "@/components/batches/edit-batch-dialog";
 import { DeleteBatchDialog } from "@/components/batches/delete-batch-dialog";
+import { DuplicateBatchDialog } from "@/components/batches/duplicate-batch-dialog";
 import { BatchSendControls } from "@/components/recipients/batch-send-controls";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,9 +46,10 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
   }
 
   const userId = await requireUser();
-  const [quota, gmailStatus] = await Promise.all([
+  const [quota, gmailStatus, userContacts] = await Promise.all([
     getDailySendQuota(),
     getUserGmailStatus(userId),
+    getContacts({ includeArchived: false }),
   ]);
 
   const recipients = batch.recipients;
@@ -121,13 +124,15 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
         </div>
 
         {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link href={`/app/batches/${batch.id}/import`}>
             <Button variant="outline" size="sm" className="font-medium">
-              <UploadCloud className="w-4 h-4 mr-2" />
+              <UploadCloud className="w-4 h-4 mr-1.5" />
               Impor Massal
             </Button>
           </Link>
+
+          <DuplicateBatchDialog batchId={batch.id} batchName={batch.name} />
 
           <BatchSendControls
             batchId={batch.id}
@@ -228,6 +233,7 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
           batchId={batch.id}
           recipients={recipients}
           isSimulated={gmailStatus.isSimulated}
+          contacts={userContacts}
         />
       </div>
     </div>

@@ -34,6 +34,12 @@ export default async function AppProtectedLayout({ children }: { children: React
                 Daftar Batch
               </Link>
               <Link
+                href="/app/contacts"
+                className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+              >
+                Daftar Kontak
+              </Link>
+              <Link
                 href="/app/settings"
                 className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
               >
