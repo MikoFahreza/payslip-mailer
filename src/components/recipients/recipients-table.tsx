@@ -141,10 +141,10 @@ export function RecipientsTable({
                       </span>
                     ) : recipient.errorMessage ? (
                       <span
-                        className="text-red-500 flex items-center gap-1 max-w-xs truncate"
+                        className="text-red-600 dark:text-red-400 flex items-center gap-1.5 max-w-xs cursor-help"
                         title={recipient.errorMessage}
                       >
-                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" />
                         <span className="truncate">{recipient.errorMessage}</span>
                       </span>
                     ) : (

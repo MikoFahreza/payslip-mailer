@@ -9,6 +9,7 @@ import { EmailAttachment } from "@/lib/email/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { del } from "@vercel/blob";
+import { getMockFile, deleteMockFile } from "@/lib/storage/mock-store";
 import { DAILY_SEND_LIMIT, DailyQuotaResult, SendRecipientResult } from "./send-types";
 
 export async function getDailySendQuota(): Promise<DailyQuotaResult> {
@@ -115,16 +116,39 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     try {
       let buffer: Buffer;
 
-      if (att.blobUrl.startsWith("http")) {
-        const fileRes = await fetch(att.blobUrl);
-        if (!fileRes.ok) {
-          throw new Error(`HTTP ${fileRes.status}`);
+      // 1. Check local mock storage first
+      if (att.blobUrl.includes("/api/blob/mock/")) {
+        const fileId = att.blobUrl.split("/api/blob/mock/").pop()?.split("?")[0] || "";
+        const localFile = getMockFile(fileId);
+        if (localFile) {
+          buffer = localFile.buffer;
+        } else {
+          // Graceful fallback for mock files from previous session
+          buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
         }
-        const arrayBuf = await fileRes.arrayBuffer();
-        buffer = Buffer.from(arrayBuf);
+      } else if (att.blobUrl.startsWith("http")) {
+        try {
+          const fileRes = await fetch(att.blobUrl);
+          if (!fileRes.ok) {
+            throw new Error(`HTTP ${fileRes.status}`);
+          }
+          const arrayBuf = await fileRes.arrayBuffer();
+          buffer = Buffer.from(arrayBuf);
+        } catch (fetchErr: unknown) {
+          // If it's a mock or localhost URL, gracefully fallback to simulated content
+          if (
+            att.blobUrl.includes("mock") ||
+            att.blobUrl.includes("sample") ||
+            att.blobUrl.includes("localhost")
+          ) {
+            buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
+          } else {
+            throw fetchErr;
+          }
+        }
       } else {
         // Fallback for simulated blob URLs in mock/test mode
-        buffer = Buffer.from(`Simulated content for ${att.filename}`);
+        buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
       }
 
       totalAttachmentBytes += buffer.byteLength;
@@ -138,7 +162,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
       // If we cannot download attachment in simulate mode, generate mock buffer
       const mode = process.env.EMAIL_MODE?.toLowerCase();
       if (mode !== "live") {
-        const dummyBuf = Buffer.from(`Simulated content for ${att.filename}`);
+        const dummyBuf = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
         emailAttachments.push({
           filename: att.filename,
           contentType: att.contentType,
@@ -238,7 +262,21 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     });
 
     if (attRows.length > 0) {
-      const urlsToDelete = attRows.map((a) => a.blobUrl).filter((url) => url.startsWith("http"));
+      // Clean up local mock files if any
+      for (const a of attRows) {
+        if (a.blobUrl.includes("/api/blob/mock/")) {
+          const fileId = a.blobUrl.split("/api/blob/mock/").pop()?.split("?")[0] || "";
+          deleteMockFile(fileId);
+        }
+      }
+
+      // Clean up remote Vercel Blob files
+      const urlsToDelete = attRows
+        .map((a) => a.blobUrl)
+        .filter(
+          (url) => url.startsWith("https://") && !url.includes("mock") && !url.includes("localhost")
+        );
+
       if (urlsToDelete.length > 0) {
         await del(urlsToDelete).catch((delErr) =>
           console.warn("[sendRecipient] Gagal membersihkan blob:", delErr)
@@ -351,7 +389,15 @@ export async function resolveUnknownStatus(
       .from(attachments)
       .where(eq(attachments.recipientId, recipientId));
     if (atts.length > 0) {
-      const urls = atts.map((a) => a.blobUrl).filter((u) => u.startsWith("http"));
+      for (const a of atts) {
+        if (a.blobUrl.includes("/api/blob/mock/")) {
+          const fileId = a.blobUrl.split("/api/blob/mock/").pop()?.split("?")[0] || "";
+          deleteMockFile(fileId);
+        }
+      }
+      const urls = atts
+        .map((a) => a.blobUrl)
+        .filter((u) => u.startsWith("https://") && !u.includes("mock") && !u.includes("localhost"));
       if (urls.length > 0) {
         await del(urls).catch(console.warn);
       }

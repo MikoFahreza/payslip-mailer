@@ -12,6 +12,7 @@ import {
 import { eq, and, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { del } from "@vercel/blob";
+import { deleteMockFile } from "@/lib/storage/mock-store";
 
 export async function saveAttachment(batchId: string, recipientId: string, input: AttachmentInput) {
   await requireSession();
@@ -108,13 +109,21 @@ export async function deleteAttachment(attachmentId: string, recipientId: string
       return { success: false, error: "File lampiran tidak ditemukan." };
     }
 
-    // 2. Delete from Vercel Blob if not mock URL
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (token && !token.includes("sample") && !attachment.blobUrl.includes("mock")) {
-      try {
-        await del(attachment.blobUrl);
-      } catch (blobErr) {
-        console.warn("[deleteAttachment Blob Warning]: Gagal menghapus dari Vercel Blob:", blobErr);
+    // 2. Delete from Vercel Blob or local mock store
+    if (attachment.blobUrl.includes("/api/blob/mock/")) {
+      const fileId = attachment.blobUrl.split("/api/blob/mock/").pop()?.split("?")[0] || "";
+      deleteMockFile(fileId);
+    } else {
+      const token = process.env.BLOB_READ_WRITE_TOKEN;
+      if (token && !token.includes("sample") && !attachment.blobUrl.includes("mock")) {
+        try {
+          await del(attachment.blobUrl);
+        } catch (blobErr) {
+          console.warn(
+            "[deleteAttachment Blob Warning]: Gagal menghapus dari Vercel Blob:",
+            blobErr
+          );
+        }
       }
     }
 

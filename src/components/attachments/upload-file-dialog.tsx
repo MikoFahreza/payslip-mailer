@@ -102,11 +102,24 @@ export function UploadFileDialog({
       const tokenData = await tokenCheck.json();
 
       if (tokenData.isMock) {
-        // Simulated upload for development when token is placeholder
+        // Upload the actual file to local mock store during development
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("pathname", pathname);
+        const uploadRes = await fetch("/api/blob/mock", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error("Gagal menyimpan file ke penyimpanan lokal.");
+        }
+
+        const mockData = await uploadRes.json();
         blobResult = {
-          url: tokenData.mockBlob.url,
-          pathname: tokenData.mockBlob.pathname,
-          contentType: selectedFile.type || "application/pdf",
+          url: mockData.url,
+          pathname: mockData.pathname || pathname,
+          contentType: selectedFile.type || "application/octet-stream",
         };
       } else {
         // Live client upload directly to Vercel Blob from browser

@@ -6,8 +6,9 @@ import { loadEnvConfig } from "@next/env";
 // Load environment variables from .env / .env.local
 loadEnvConfig(process.cwd());
 
-const PORT = 3333;
-const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
+const customRedirectUri = process.env.GOOGLE_REDIRECT_URI;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3333;
+const REDIRECT_URI = customRedirectUri || `http://localhost:${PORT}/oauth2callback`;
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -31,9 +32,16 @@ const authUrl = oauth2Client.generateAuthUrl({
 });
 
 console.log("\n========================================================");
-console.log("       GMAIL OAUTH2 TOKEN GENERATOR (PAYSIP MAILER)      ");
+console.log("       GMAIL OAUTH2 TOKEN GENERATOR (PAYSLIP MAILER)      ");
 console.log("========================================================");
-console.log("\n1. Buka tautan berikut di browser Anda:");
+console.log(
+  "\n⚠️  PENTING: Pastikan redirect URI berikut sudah didaftarkan di Google Cloud Console:"
+);
+console.log(`👉 \x1b[33m${REDIRECT_URI}\x1b[0m`);
+console.log(
+  "   (Google Cloud Console -> APIs & Services -> Credentials -> OAuth 2.0 Client IDs -> Authorized redirect URIs)\n"
+);
+console.log("1. Buka tautan berikut di browser Anda:");
 console.log(`\n👉 \x1b[36m${authUrl}\x1b[0m\n`);
 console.log("2. Masuk dengan akun Gmail pengirim dan berikan izin.");
 console.log("3. Setelah diarahkan kembali, token akan otomatis dicetak di sini.\n");
