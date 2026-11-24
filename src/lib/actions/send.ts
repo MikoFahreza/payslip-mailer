@@ -90,18 +90,20 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
 
   const recipient = updatedRows[0];
 
-  // 3. Record attempt event in send_logs
-  await db.insert(sendLogs).values({
-    recipientId: recipient.id,
-    event: "attempt",
-    detail: "Memulai proses pengiriman email",
-  });
-
-  // 4. Fetch batch info and attachments
+  // 3. Fetch batch info and attachments
   const batchRow = await db.query.batches.findFirst({
     where: eq(batches.id, recipient.batchId),
   });
   const batchName = batchRow?.name || "Periode Gaji";
+  const userId = batchRow!.userId;
+
+  // 4. Record attempt event in send_logs
+  await db.insert(sendLogs).values({
+    userId,
+    recipientId: recipient.id,
+    event: "attempt",
+    detail: "Memulai proses pengiriman email",
+  });
 
   const attRows = await db
     .select()
@@ -176,6 +178,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
           .where(eq(recipients.id, recipient.id));
 
         await db.insert(sendLogs).values({
+          userId,
           recipientId: recipient.id,
           event: "failed",
           detail: errorMsg,
@@ -201,6 +204,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
       .where(eq(recipients.id, recipient.id));
 
     await db.insert(sendLogs).values({
+      userId,
       recipientId: recipient.id,
       event: "failed",
       detail: errorMsg,
@@ -256,6 +260,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
       .where(eq(recipients.id, recipient.id));
 
     await db.insert(sendLogs).values({
+      userId,
       recipientId: recipient.id,
       event: "sent",
       detail: `Berhasil dikirim via ${sendResult.provider} (ID: ${sendResult.messageId || "-"}). Lampiran: ${attachmentFilenames.join(", ") || "tidak ada"}.`,
@@ -307,6 +312,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
       .where(eq(recipients.id, recipient.id));
 
     await db.insert(sendLogs).values({
+      userId,
       recipientId: recipient.id,
       event: "failed",
       detail: errorMsg,
@@ -332,6 +338,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     .where(eq(recipients.id, recipient.id));
 
   await db.insert(sendLogs).values({
+    userId,
     recipientId: recipient.id,
     event: "failed",
     detail: `Hasil tidak pasti: ${unknownMsg}`,
@@ -357,7 +364,16 @@ export async function resolveUnknownStatus(
     return { success: false, error: "Database belum siap." };
   }
 
-  const [recipient] = await db.select().from(recipients).where(eq(recipients.id, recipientId));
+  const [recipient] = await db
+    .select({
+      id: recipients.id,
+      batchId: recipients.batchId,
+      status: recipients.status,
+      userId: batches.userId,
+    })
+    .from(recipients)
+    .innerJoin(batches, eq(recipients.batchId, batches.id))
+    .where(eq(recipients.id, recipientId));
 
   if (!recipient) {
     return { success: false, error: "Penerima tidak ditemukan." };
@@ -378,6 +394,7 @@ export async function resolveUnknownStatus(
       .where(eq(recipients.id, recipientId));
 
     await db.insert(sendLogs).values({
+      userId: recipient.userId,
       recipientId,
       event: "sent",
       detail: "Admin menandai status sebagai terkirim secara manual.",
@@ -413,6 +430,7 @@ export async function resolveUnknownStatus(
       .where(eq(recipients.id, recipientId));
 
     await db.insert(sendLogs).values({
+      userId: recipient.userId,
       recipientId,
       event: "failed",
       detail: "Admin menandai status sebagai gagal secara manual.",

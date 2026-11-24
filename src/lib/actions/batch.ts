@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { attachments, batches, recipients } from "@/lib/db/schema";
+import { attachments, batches, recipients, users } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { batchSchema } from "@/lib/validations/batch";
 import { eq, desc, sql, inArray } from "drizzle-orm";
@@ -119,9 +119,29 @@ export async function createBatch(data: { name: string }) {
   }
 
   try {
+    const userEmail = session.user?.email || "user.demo@example.com";
+    let user = await db.query.users.findFirst({
+      where: eq(users.email, userEmail),
+    });
+    if (!user) {
+      const [created] = await db
+        .insert(users)
+        .values({
+          email: userEmail,
+          name: session.user?.name || "Pengguna",
+        })
+        .onConflictDoUpdate({
+          target: [users.email],
+          set: { name: session.user?.name || "Pengguna" },
+        })
+        .returning();
+      user = created;
+    }
+
     const [newBatch] = await db
       .insert(batches)
       .values({
+        userId: user.id,
         name: validation.data.name.trim(),
       })
       .returning();
