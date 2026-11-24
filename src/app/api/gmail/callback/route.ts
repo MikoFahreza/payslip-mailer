@@ -65,10 +65,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   // 2. Exchange authorization code for tokens
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.AUTH_URL ||
-    url.origin;
+  const configuredOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || "").trim().replace(/\/$/, "");
+  const origin = configuredOrigin || url.origin;
   const redirectUri = `${origin}/api/gmail/callback`;
 
   if (!clientId || !clientSecret) {

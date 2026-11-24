@@ -21,10 +21,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // 1. Resolve application origin URL
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.AUTH_URL ||
-    new URL(request.url).origin;
+  const configuredOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || "").trim().replace(/\/$/, "");
+  const origin = configuredOrigin || new URL(request.url).origin;
 
   const redirectUri = `${origin}/api/gmail/callback`;
 
