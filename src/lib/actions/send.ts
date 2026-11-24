@@ -1,10 +1,10 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { attachments, batches, recipients, sendLogs } from "@/lib/db/schema";
+import { attachments, batches, recipients, sendLogs, gmailConnections } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
 import { assertOwnsRecipient } from "@/lib/auth/isolation";
-import { getEmailProvider } from "@/lib/email";
+import { getUserEmailProvider } from "@/lib/email";
 import { generateEmailHtml, generateEmailText } from "@/lib/email/template";
 import { EmailAttachment } from "@/lib/email/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
@@ -237,8 +237,8 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     attachmentNames: attachmentFilenames,
   });
 
-  // 7. Send email via provider
-  const provider = getEmailProvider();
+  // 7. Send email via user's email provider (Gmail if connected, Simulate if not)
+  const { provider } = await getUserEmailProvider(userId);
   const sendResult = await provider.sendEmail({
     to: recipient.email,
     toName: recipient.name,
@@ -247,6 +247,21 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     text,
     attachments: emailAttachments,
   });
+
+  // If token is invalid or expired, automatically flag connection as revoked
+  if (
+    sendResult.status === "failed" &&
+    sendResult.error?.includes("Otorisasi Gmail kedaluwarsa")
+  ) {
+    try {
+      await db
+        .update(gmailConnections)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(eq(gmailConnections.userId, userId));
+    } catch (e) {
+      console.warn("[sendRecipient Warning]: Gagal update status revoked:", e);
+    }
+  }
 
   // 8. Handle result status
   if (sendResult.status === "sent") {

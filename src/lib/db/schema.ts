@@ -33,7 +33,7 @@ export const gmailConnectionStatusEnum = pgEnum("gmail_connection_status", [
   "revoked",
 ]);
 
-// 1. Users Table (Google OAuth Multi-User)
+// 1. Users Table (Hybrid Auth: Google OAuth + Credentials)
 export const users = pgTable(
   "users",
   {
@@ -41,6 +41,7 @@ export const users = pgTable(
     email: varchar("email", { length: 255 }).notNull(),
     name: varchar("name", { length: 255 }),
     image: text("image"),
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
