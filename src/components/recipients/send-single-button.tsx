@@ -11,9 +11,15 @@ interface SendSingleButtonProps {
   recipientId: string;
   recipientName: string;
   status: RecipientStatus;
+  isSimulated?: boolean;
 }
 
-export function SendSingleButton({ recipientId, recipientName, status }: SendSingleButtonProps) {
+export function SendSingleButton({
+  recipientId,
+  recipientName,
+  status,
+  isSimulated = false,
+}: SendSingleButtonProps) {
   const [isSending, setIsSending] = useState(false);
   const router = useRouter();
 
@@ -31,7 +37,11 @@ export function SendSingleButton({ recipientId, recipientName, status }: SendSin
     try {
       const res = await sendRecipient(recipientId);
       if (!res.success && res.status !== "skipped") {
-        alert(`Gagal mengirim ke ${recipientName}: ${res.error || "Terjadi kesalahan"}`);
+        if (res.error === "Hubungkan ulang Gmail" || res.error?.includes("Hubungkan ulang Gmail")) {
+          alert("Pengiriman dihentikan: Otorisasi Gmail telah kedaluwarsa atau dicabut. Silakan hubungkan ulang Gmail di Pengaturan.");
+        } else {
+          alert(`Gagal mengirim ke ${recipientName}: ${res.error || "Terjadi kesalahan"}`);
+        }
       }
       router.refresh();
     } catch (err: unknown) {
@@ -42,6 +52,13 @@ export function SendSingleButton({ recipientId, recipientName, status }: SendSin
     }
   };
 
+  const buttonLabel = status === "failed" ? "Kirim Ulang" : isSimulated ? "Simulasi" : "Kirim";
+  const buttonTitle = isSimulated
+    ? "Simulasi (Gmail belum terhubung)"
+    : status === "failed"
+      ? "Kirim ulang email ini"
+      : "Kirim email ini sekarang";
+
   return (
     <Button
       variant="outline"
@@ -49,7 +66,7 @@ export function SendSingleButton({ recipientId, recipientName, status }: SendSin
       className="h-8 px-2 text-xs text-neutral-700 dark:text-neutral-300 hover:text-blue-600 dark:hover:text-blue-400 gap-1.5"
       onClick={handleSend}
       disabled={isSending}
-      title={status === "failed" ? "Kirim ulang email ini" : "Kirim email ini sekarang"}
+      title={buttonTitle}
     >
       {isSending ? (
         <>
@@ -59,7 +76,7 @@ export function SendSingleButton({ recipientId, recipientName, status }: SendSin
       ) : (
         <>
           <Send className="w-3.5 h-3.5" />
-          <span>{status === "failed" ? "Kirim Ulang" : "Kirim"}</span>
+          <span>{buttonLabel}</span>
         </>
       )}
     </Button>

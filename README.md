@@ -160,51 +160,13 @@ _Catatan: Seluruh data contoh yang digunakan dalam repositori dan pengujian meng
 
 ---
 
-## Langkah Setup Gmail API & Mendapatkan Refresh Token
+## Integrasi Gmail per Pengguna (Multi-User OAuth)
 
-Aplikasi menggunakan akun pengirim Gmail tunggal melalui OAuth2 (scope `gmail.send`). Pengguna akhir tidak perlu login Google; server menggunakan `GMAIL_REFRESH_TOKEN` untuk mendapatkan access token secara otomatis.
+Aplikasi menggunakan integrasi Gmail per pengguna. Setiap pengguna dapat masuk dengan akun Google atau mendaftar mandiri, lalu menghubungkan akun Gmail masing-masing di halaman **Pengaturan** (`/app/settings`).
 
-### Langkah demi Langkah di Google Cloud Console:
-
-1. **Buka Google Cloud Console**:
-   Kunjungi [console.cloud.google.com](https://console.cloud.google.com/) dan buat project baru (misal: `payslip-mailer`).
-2. **Aktifkan Gmail API**:
-   - Masuk ke menu **APIs & Services** > **Library**.
-   - Cari **Gmail API**, lalu klik tombol **Enable**.
-3. **Konfigurasi OAuth Consent Screen**:
-   - Masuk ke **APIs & Services** > **OAuth consent screen**.
-   - Pilih **User Type: External**, lalu klik **Create**.
-   - Isi nama aplikasi (misal `Payslip Mailer`) dan email dukungan pengembang.
-   - Pada bagian **Test users** (Pengguna Uji Coba), klik **+ ADD USERS** dan masukkan alamat email Gmail yang akan dipakai sebagai pengirim (misal `emailanda@gmail.com`). Klik **Save**.
-4. **Buat Kredensial OAuth 2.0 Client ID**:
-   - Masuk ke **APIs & Services** > **Credentials**.
-   - Klik **+ CREATE CREDENTIALS** > **OAuth client ID**.
-   - Pilih **Application type: Web application**.
-   - Di bagian **Authorized redirect URIs** (URI Pengalihan Resmi), tambahkan:
-     ```text
-     http://localhost:3333/oauth2callback
-     ```
-   - Klik **Create**. Salin **Client ID** dan **Client Secret** yang muncul.
-5. **Simpan ke `.env.local`**:
-   ```env
-   GOOGLE_CLIENT_ID="xxx.apps.googleusercontent.com"
-   GOOGLE_CLIENT_SECRET="GOCSPX-xxx"
-   GMAIL_SENDER="emailanda@gmail.com"
-   ```
-6. **Jalankan Skrip Pembantu Token**:
-   ```bash
-   npm run get-gmail-token
-   ```
-   - Skrip akan membuka server lokal di port 3333 dan menampilkan URL otorisasi di terminal.
-   - Buka tautan tersebut di peramban, masuk dengan akun pengirim, dan berikan izin pengiriman email.
-   - Jika muncul peringatan _"Google hasn't verified this app"_, klik **Advanced** > **Go to payslip-mailer (unsafe)** > **Continue**.
-   - Terminal akan otomatis mencetak nilai `GMAIL_REFRESH_TOKEN`.
-7. **Perbarui `.env.local`**:
-   Masukkan refresh token tersebut dan ubah mode email ke `live`:
-   ```env
-   GMAIL_REFRESH_TOKEN="1//04xxx"
-   EMAIL_MODE="live"
-   ```
+- Token penyegaran (*refresh token*) dienkripsi dengan standar **AES-256-GCM** sebelum disimpan di database.
+- Kunci enkripsi disimpan aman di environment variable `TOKEN_ENCRYPTION_KEY`.
+- Pengguna yang belum menghubungkan Gmail atau saat `EMAIL_MODE=simulate` akan otomatis berjalan di mode simulasi dengan label penanda yang jelas.
 
 ---
 
@@ -216,15 +178,13 @@ Simpan nilai-nilai berikut di `.env.local` (untuk lokal) dan di pengaturan Verce
 | :---------------------- | :------------------------------------------------------------- | :---------------------------------------------------------------- |
 | `DATABASE_URL`          | `postgres://user:pass@ep-xyz.neon.tech/neondb?sslmode=require` | Connection string Postgres Neon Serverless                        |
 | `AUTH_SECRET`           | `openssl rand -base64 32`                                      | Kunci rahasia enkripsi JWT Auth.js                                |
-| `ADMIN_EMAIL`           | `admin@example.com`                                            | Email akun admin untuk login ke `/login`                          |
-| `ADMIN_PASSWORD_HASH`   | `\$2b\$10\$...`                                                | Hash bcrypt kata sandi admin (tanda `$` wajib di-escape `\$`)     |
+| `TOKEN_ENCRYPTION_KEY`  | 32-byte Base64 key                                             | Kunci enkripsi token AES-256-GCM per pengguna                     |
 | `BLOB_READ_WRITE_TOKEN` | `vercel_blob_rw_...`                                           | Token akses read/write Vercel Blob                                |
 | `GOOGLE_CLIENT_ID`      | `xxx.apps.googleusercontent.com`                               | Client ID OAuth2 Google Cloud                                     |
 | `GOOGLE_CLIENT_SECRET`  | `GOCSPX-xxx`                                                   | Client Secret OAuth2 Google Cloud                                 |
-| `GMAIL_REFRESH_TOKEN`   | `1//04xxx`                                                     | Refresh token untuk pertukaran access token Gmail                 |
-| `GMAIL_SENDER`          | `pengirim@gmail.com`                                           | Alamat email Gmail yang bertindak sebagai pengirim                |
 | `EMAIL_MODE`            | `live` atau `simulate`                                         | Mode pengiriman (`live` kirim sungguhan, `simulate` simulasi log) |
 | `NEXT_PUBLIC_APP_NAME`  | `Payslip Mailer`                                               | Nama aplikasi yang ditampilkan di header dan email                |
+| `NEXT_PUBLIC_APP_URL`   | `http://localhost:3000`                                        | URL dasar aplikasi                                                |
 
 > **PENTING (Next.js Env Interpolation)**: Di Next.js, tanda `$` pada hash password bcrypt (`$2b$10$...`) di file `.env` akan dianggap sebagai variabel ekspansi. Anda **wajib** menambahkan backslash (`\$2b\$10\$...`) agar hash tidak terpotong.
 
@@ -242,10 +202,11 @@ Simpan nilai-nilai berikut di `.env.local` (untuk lokal) dan di pengaturan Verce
 4. **Konfigurasi Environment Variables**:
    Tambahkan variabel yang tersisa di menu **Project Settings** > **Environment Variables**:
    - `AUTH_SECRET`
-   - `ADMIN_EMAIL` & `ADMIN_PASSWORD_HASH`
-   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER`
+   - `TOKEN_ENCRYPTION_KEY`
+   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    - `EMAIL_MODE=live`
    - `NEXT_PUBLIC_APP_NAME=Payslip Mailer`
+   - `NEXT_PUBLIC_APP_URL=https://<nama-app>.vercel.app`
 5. **Jalankan Migrasi Database di Produksi**:
    Jalankan `npm run db:migrate` dengan menyambungkan `DATABASE_URL` produksi melalui terminal lokal Anda atau melalui build script.
 6. **Deploy**:

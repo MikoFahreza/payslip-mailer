@@ -1,83 +1,207 @@
 import { OAuth2Client } from "google-auth-library";
 import { createMimeMessage } from "mimetext";
+import { db } from "@/lib/db";
+import { gmailConnections } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { decrypt } from "@/lib/crypto/encryption";
 import { EmailProvider, SendEmailParams, SendEmailResult } from "./types";
 
 const MAX_MESSAGE_BYTES = 25 * 1024 * 1024; // 25 MB Gmail message limit
 
+interface CachedAccessToken {
+  token: string;
+  expiresAt: number; // millisecond epoch
+}
+
+// In-memory cache for access tokens across one invocation / batch process
+const tokenCache = new Map<string, CachedAccessToken>();
+
+export function clearGmailTokenCache(): void {
+  tokenCache.clear();
+}
+
+export function getCachedTokenForUser(key: string): CachedAccessToken | undefined {
+  return tokenCache.get(key);
+}
+
+export interface GmailProviderOptions {
+  userId?: string;
+  clientId?: string;
+  clientSecret?: string;
+  refreshToken?: string;
+  senderEmail?: string;
+}
+
 export class GmailProvider implements EmailProvider {
   public readonly name = "gmail";
+  public readonly userId?: string;
   private clientId: string;
   private clientSecret: string;
-  private refreshToken: string;
-  private senderEmail: string;
+  private refreshToken?: string;
+  private senderEmail?: string;
 
-  constructor(options?: {
-    clientId?: string;
-    clientSecret?: string;
-    refreshToken?: string;
-    senderEmail?: string;
-  }) {
-    this.clientId = options?.clientId || process.env.GOOGLE_CLIENT_ID || "";
-    this.clientSecret = options?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || "";
-    this.refreshToken = options?.refreshToken || process.env.GMAIL_REFRESH_TOKEN || "";
-    this.senderEmail = options?.senderEmail || process.env.GMAIL_SENDER || "";
+  constructor(optionsOrUserId?: string | GmailProviderOptions) {
+    if (typeof optionsOrUserId === "string") {
+      this.userId = optionsOrUserId;
+      this.clientId = process.env.GOOGLE_CLIENT_ID || "";
+      this.clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+    } else {
+      this.userId = optionsOrUserId?.userId;
+      this.clientId = optionsOrUserId?.clientId || process.env.GOOGLE_CLIENT_ID || "";
+      this.clientSecret = optionsOrUserId?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || "";
+      this.refreshToken = optionsOrUserId?.refreshToken;
+      this.senderEmail = optionsOrUserId?.senderEmail;
+    }
+  }
+
+  /**
+   * Helper to mark a user's connection as revoked in the database and clear cache
+   */
+  private async markRevoked(): Promise<void> {
+    if (!this.userId) return;
+    try {
+      const url = process.env.DATABASE_URL;
+      if (!url || url.includes("ep-sample-pooler")) return;
+
+      await db
+        .update(gmailConnections)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(eq(gmailConnections.userId, this.userId));
+    } catch (err) {
+      console.warn("[GmailProvider] Gagal memperbarui status revoked:", err);
+    }
   }
 
   async sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
     const { to, toName, subject, html, text, attachments = [] } = params;
 
-    // 1. Verify required credentials
+    // 1. Resolve user credentials from database if userId was provided
+    if (this.userId && (!this.refreshToken || !this.senderEmail)) {
+      try {
+        const url = process.env.DATABASE_URL;
+        if (!url || url.includes("ep-sample-pooler")) {
+          return {
+            success: false,
+            status: "failed",
+            error: "Koneksi database belum dikonfigurasi.",
+            provider: "gmail",
+          };
+        }
+
+        const connection = await db.query.gmailConnections.findFirst({
+          where: eq(gmailConnections.userId, this.userId),
+        });
+
+        if (!connection || !connection.refreshTokenEncrypted) {
+          return {
+            success: false,
+            status: "failed",
+            error: "Akun Gmail belum terhubung.",
+            provider: "gmail",
+          };
+        }
+
+        if (connection.status === "revoked") {
+          return {
+            success: false,
+            status: "failed",
+            error: "Hubungkan ulang Gmail",
+            provider: "gmail",
+          };
+        }
+
+        try {
+          this.refreshToken = decrypt(connection.refreshTokenEncrypted);
+          this.senderEmail = connection.gmailEmail;
+        } catch (decryptErr) {
+          return {
+            success: false,
+            status: "failed",
+            error: `Gagal mendekripsi kredensial Gmail: ${(decryptErr as Error).message}`,
+            provider: "gmail",
+          };
+        }
+      } catch (dbErr) {
+        return {
+          success: false,
+          status: "failed",
+          error: `Gagal membaca kredensial pengguna: ${(dbErr as Error).message}`,
+          provider: "gmail",
+        };
+      }
+    }
+
+    // 2. Verify required credentials
     if (!this.clientId || !this.clientSecret || !this.refreshToken || !this.senderEmail) {
       return {
         success: false,
         status: "failed",
         error:
-          "Konfigurasi Gmail API belum lengkap di environment variable (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_SENDER)",
+          "Konfigurasi Gmail API belum lengkap (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, atau kredensial pengguna hilang)",
         provider: "gmail",
       };
     }
 
-    // 2. Exchange refresh token for access token
+    // 3. Exchange refresh token for access token (with in-memory cache)
+    const cacheKey = this.userId ? `user:${this.userId}` : `token:${this.refreshToken}`;
     let accessToken: string;
-    try {
-      const oauth2Client = new OAuth2Client(this.clientId, this.clientSecret);
-      oauth2Client.setCredentials({ refresh_token: this.refreshToken });
-      const tokenResponse = await oauth2Client.getAccessToken();
 
-      if (!tokenResponse.token) {
+    const cached = tokenCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() + 60_000) {
+      accessToken = cached.token;
+    } else {
+      try {
+        const oauth2Client = new OAuth2Client(this.clientId, this.clientSecret);
+        oauth2Client.setCredentials({ refresh_token: this.refreshToken });
+        const tokenResponse = await oauth2Client.getAccessToken();
+
+        if (!tokenResponse.token) {
+          await this.markRevoked();
+          tokenCache.delete(cacheKey);
+          return {
+            success: false,
+            status: "failed",
+            error: "Hubungkan ulang Gmail",
+            provider: "gmail",
+          };
+        }
+
+        accessToken = tokenResponse.token;
+        // Cache token in memory for this invocation (~58 minutes)
+        tokenCache.set(cacheKey, {
+          token: accessToken,
+          expiresAt: Date.now() + 3500 * 1000,
+        });
+      } catch (authError: unknown) {
+        const err = authError as Error;
+        const msg = (err.message || "").toLowerCase();
+        if (
+          msg.includes("invalid_grant") ||
+          msg.includes("unauthorized_client") ||
+          msg.includes("401") ||
+          msg.includes("revoked") ||
+          msg.includes("expired")
+        ) {
+          await this.markRevoked();
+          tokenCache.delete(cacheKey);
+          return {
+            success: false,
+            status: "failed",
+            error: "Hubungkan ulang Gmail",
+            provider: "gmail",
+          };
+        }
+
         return {
           success: false,
           status: "failed",
-          error: "Otorisasi Gmail kedaluwarsa, ulangi otorisasi",
+          error: `Gagal mendapatkan token Gmail: ${err.message}`,
           provider: "gmail",
         };
       }
-
-      accessToken = tokenResponse.token;
-    } catch (authError: unknown) {
-      const err = authError as Error;
-      const msg = err.message || "";
-      if (
-        msg.includes("invalid_grant") ||
-        msg.includes("unauthorized_client") ||
-        msg.includes("401")
-      ) {
-        return {
-          success: false,
-          status: "failed",
-          error: "Otorisasi Gmail kedaluwarsa, ulangi otorisasi",
-          provider: "gmail",
-        };
-      }
-      return {
-        success: false,
-        status: "failed",
-        error: `Gagal mendapatkan token Gmail: ${msg}`,
-        provider: "gmail",
-      };
     }
 
-    // 3. Compose MIME Message
+    // 4. Compose MIME Message with From = user's connected Gmail address
     let rawBase64Url: string;
     try {
       const msg = createMimeMessage();
@@ -130,7 +254,7 @@ export class GmailProvider implements EmailProvider {
       };
     }
 
-    // 4. Send via Gmail REST API with 25s timeout
+    // 5. Send via Gmail REST API with 25s timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 25000);
 
@@ -164,15 +288,23 @@ export class GmailProvider implements EmailProvider {
 
       const apiErrorMessage = errorJson?.error?.message || "";
 
-      if (statusCode === 401 || apiErrorMessage.toLowerCase().includes("invalid_grant")) {
+      // invalid_grant / 401 -> mark revoked & prompt "Hubungkan ulang Gmail"
+      if (
+        statusCode === 401 ||
+        apiErrorMessage.toLowerCase().includes("invalid_grant") ||
+        apiErrorMessage.toLowerCase().includes("unauthorized")
+      ) {
+        await this.markRevoked();
+        tokenCache.delete(cacheKey);
         return {
           success: false,
           status: "failed",
-          error: "Otorisasi Gmail kedaluwarsa, ulangi otorisasi",
+          error: "Hubungkan ulang Gmail",
           provider: "gmail",
         };
       }
 
+      // 429 -> Rate limit failed
       if (statusCode === 429) {
         return {
           success: false,
@@ -182,6 +314,7 @@ export class GmailProvider implements EmailProvider {
         };
       }
 
+      // 5xx -> Server failure
       if (statusCode >= 500) {
         return {
           success: false,

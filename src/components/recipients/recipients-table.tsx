@@ -25,9 +25,11 @@ export type RecipientRow = Recipient & { attachments?: Attachment[] };
 export function RecipientsTable({
   batchId,
   recipients,
+  isSimulated = false,
 }: {
   batchId: string;
   recipients: RecipientRow[];
+  isSimulated?: boolean;
 }) {
   const [search, setSearch] = useState("");
 
@@ -165,6 +167,7 @@ export function RecipientsTable({
                           recipientId={recipient.id}
                           recipientName={recipient.name}
                           status={recipient.status}
+                          isSimulated={isSimulated}
                         />
                       )}
                       <EditRecipientDialog recipient={recipient} batchId={batchId} />

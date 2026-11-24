@@ -251,7 +251,10 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
   // If token is invalid or expired, automatically flag connection as revoked
   if (
     sendResult.status === "failed" &&
-    sendResult.error?.includes("Otorisasi Gmail kedaluwarsa")
+    (sendResult.error === "Hubungkan ulang Gmail" ||
+      sendResult.error?.includes("Otorisasi Gmail kedaluwarsa") ||
+      sendResult.error?.includes("invalid_grant") ||
+      sendResult.error?.includes("revoked"))
   ) {
     try {
       await db

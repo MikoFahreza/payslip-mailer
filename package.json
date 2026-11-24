@@ -12,8 +12,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/db/migrate.ts",
-    "db:seed": "tsx src/lib/db/seed.ts",
-    "get-gmail-token": "tsx scripts/get-gmail-token.ts"
+    "db:seed": "tsx src/lib/db/seed.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",
