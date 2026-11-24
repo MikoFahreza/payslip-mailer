@@ -103,7 +103,7 @@ export default async function BatchDetailPage({ params }: BatchDetailPageProps) 
           <Link href={`/app/batches/${batch.id}/import`}>
             <Button variant="outline" size="sm" className="font-medium">
               <UploadCloud className="w-4 h-4 mr-2" />
-              Impor Massal (Fase 5)
+              Impor Massal
             </Button>
           </Link>
 

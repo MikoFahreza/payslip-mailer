@@ -14,9 +14,14 @@ export const recipientSchema = z.object({
     .max(255, "Email maksimal 255 karakter"),
 });
 
+export const MAX_RECIPIENTS_PER_BATCH = 50;
+
 export const recipientListSchema = z
   .array(recipientSchema)
   .min(1, "Daftar penerima tidak boleh kosong")
-  .max(50, "Maksimal 50 penerima per batch untuk mencegah penyalahgunaan");
+  .max(
+    MAX_RECIPIENTS_PER_BATCH,
+    `Maksimal ${MAX_RECIPIENTS_PER_BATCH} penerima per batch untuk mencegah penyalahgunaan`
+  );
 
 export type RecipientInput = z.infer<typeof recipientSchema>;
