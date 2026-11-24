@@ -99,7 +99,7 @@ export async function getBatchById(id: string) {
 }
 
 export async function createBatch(data: { name: string }) {
-  await requireSession();
+  const session = await requireSession();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
