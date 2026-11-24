@@ -1,23 +1,7 @@
 import { describe, it, expect } from "vitest";
-import bcrypt from "bcryptjs";
 import { dummySeedData } from "@/lib/db/seed";
 
-describe("Credentials & Security Verification", () => {
-  const samplePassword = "admin123456";
-  const sampleHash = "$2b$10$7YycopL2msl6ATcxymuP4.YU64uc8KrudB7yL6P/WpbzTMIVPe2X2";
-
-  it("should verify bcrypt hash matches test password", async () => {
-    const isMatch = await bcrypt.compare(samplePassword, sampleHash);
-    expect(isMatch).toBe(true);
-  });
-
-  it("should reject incorrect passwords", async () => {
-    const isMatch = await bcrypt.compare("wrong-password", sampleHash);
-    expect(isMatch).toBe(false);
-  });
-});
-
-describe("Seed Data Integrity", () => {
+describe("Multi-User Seed Data Integrity", () => {
   it("has valid fake batch data", () => {
     expect(dummySeedData.batch.name).toBe("Periode 1-7 Desember 2026");
   });

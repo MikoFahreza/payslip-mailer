@@ -1,35 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { loginSchema } from "./auth";
 import { batchSchema } from "./batch";
 import { recipientSchema, recipientListSchema } from "./recipient";
 
 describe("Validation Schemas", () => {
-  describe("loginSchema", () => {
-    it("validates correct login credentials", () => {
-      const result = loginSchema.safeParse({
-        email: "admin@example.com",
-        password: "securePassword123",
-      });
-      expect(result.success).toBe(true);
-    });
-
-    it("rejects invalid email formats", () => {
-      const result = loginSchema.safeParse({
-        email: "invalid-email-address",
-        password: "password123",
-      });
-      expect(result.success).toBe(false);
-    });
-
-    it("rejects passwords shorter than 6 characters", () => {
-      const result = loginSchema.safeParse({
-        email: "admin@example.com",
-        password: "123",
-      });
-      expect(result.success).toBe(false);
-    });
-  });
-
   describe("batchSchema", () => {
     it("validates valid batch names", () => {
       const result = batchSchema.safeParse({
@@ -68,14 +41,12 @@ describe("Validation Schemas", () => {
       }
     });
 
-    it("allows a batch with up to 50 recipients", () => {
-      const validList = Array.from({ length: 50 }, (_, i) => ({
-        name: `Karyawan ${i + 1}`,
-        email: `karyawan${i + 1}@example.com`,
-      }));
-
-      const result = recipientListSchema.safeParse(validList);
-      expect(result.success).toBe(true);
+    it("rejects empty recipient list", () => {
+      const result = recipientListSchema.safeParse([]);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toContain("tidak boleh kosong");
+      }
     });
   });
 });

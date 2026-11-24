@@ -88,8 +88,6 @@ export function UploadFileDialog({
     setError(null);
 
     try {
-      const pathname = generateSecureBlobPathname(recipientId, selectedFile.name);
-
       let blobResult: { url: string; pathname: string; contentType: string };
 
       // Check if running in mock/sample mode
@@ -100,6 +98,7 @@ export function UploadFileDialog({
       });
 
       const tokenData = await tokenCheck.json();
+      const pathname = generateSecureBlobPathname(recipientId, selectedFile.name, tokenData.userId);
 
       if (tokenData.isMock) {
         // Upload the actual file to local mock store during development

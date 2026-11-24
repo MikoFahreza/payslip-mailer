@@ -1,67 +1,20 @@
 import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { checkRateLimit, recordFailedAttempt, resetAttempts } from "@/lib/auth/rate-limiter";
+import Google from "next-auth/providers/google";
+import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { normalizeEmail } from "@/lib/utils";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
-    Credentials({
-      name: "Admin Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      authorize: async (credentials) => {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-
-        const email = String(credentials.email).trim().toLowerCase();
-        const password = String(credentials.password);
-
-        // Rate limit: 5 in production, 20 in dev per 15 minutes per email
-        const maxAttempts = process.env.NODE_ENV === "production" ? 5 : 20;
-        const rateLimitKey = `login:${email}`;
-        const limit = checkRateLimit(rateLimitKey, maxAttempts, 15 * 60 * 1000);
-        if (!limit.allowed) {
-          console.warn(`[Security] Percobaan login melampaui batas untuk: ${email}`);
-          throw new Error("TOO_MANY_REQUESTS");
-        }
-
-        const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-        const adminHash = process.env.ADMIN_PASSWORD_HASH?.trim();
-
-        if (!adminEmail || !adminHash) {
-          console.error("[Auth] ADMIN_EMAIL atau ADMIN_PASSWORD_HASH belum dikonfigurasi.");
-          return null;
-        }
-
-        if (!adminHash.startsWith("$")) {
-          console.warn(
-            "[Auth Warning] ADMIN_PASSWORD_HASH tidak diawali '$'. " +
-              "Jika disimpan di file .env / .env.local Next.js, pastikan karakter '$' di-escape dengan '\\$' agar tidak terpotong oleh dotenv-expand."
-          );
-        }
-
-        if (email !== adminEmail) {
-          recordFailedAttempt(rateLimitKey);
-          return null;
-        }
-
-        const isValid = await bcrypt.compare(password, adminHash);
-        if (!isValid) {
-          recordFailedAttempt(rateLimitKey);
-          return null;
-        }
-
-        // Reset rate limiter on successful authentication
-        resetAttempts(rateLimitKey);
-
-        return {
-          id: "admin",
-          email: adminEmail,
-          name: "Administrator",
-        };
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: "openid email profile",
+          prompt: "select_account",
+        },
       },
     }),
   ],
@@ -72,18 +25,80 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
-    jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
+    async signIn({ user }) {
+      if (!user.email) {
+        console.error("[Auth] Login Google gagal: akun Google tidak memiliki alamat email.");
+        return false;
       }
+
+      const email = normalizeEmail(user.email);
+      const name = user.name || null;
+      const image = user.image || null;
+
+      const url = process.env.DATABASE_URL;
+      if (!url || url.includes("ep-sample-pooler")) {
+        // If testing without a live database, allow sign in to proceed
+        return true;
+      }
+
+      try {
+        await db
+          .insert(users)
+          .values({
+            email,
+            name,
+            image,
+          })
+          .onConflictDoUpdate({
+            target: [users.email],
+            set: {
+              ...(name ? { name } : {}),
+              ...(image ? { image } : {}),
+            },
+          });
+        return true;
+      } catch (error) {
+        console.error("[Auth] Gagal upsert user saat login:", error);
+        return false;
+      }
+    },
+    async jwt({ token, user }) {
+      const rawEmail = (user?.email || token.email) as string | undefined;
+      if (rawEmail) {
+        const email = normalizeEmail(rawEmail);
+        token.email = email;
+
+        const url = process.env.DATABASE_URL;
+        if (url && !url.includes("ep-sample-pooler")) {
+          try {
+            const dbUser = await db.query.users.findFirst({
+              where: eq(users.email, email),
+            });
+            if (dbUser) {
+              token.userId = dbUser.id;
+              token.id = dbUser.id;
+              token.name = dbUser.name ?? token.name;
+              token.picture = dbUser.image ?? token.picture;
+            }
+          } catch (dbErr) {
+            console.warn("[Auth Warning] Gagal query user saat jwt callback:", dbErr);
+          }
+        }
+      }
+
+      // Fallback ID if database lookup is skipped (e.g. test environments)
+      if (!token.userId && token.id) {
+        token.userId = token.id as string;
+      }
+
       return token;
     },
     session({ session, token }) {
       if (session.user && token) {
+        session.user.id = (token.userId || token.id || token.sub) as string;
         session.user.email = (token.email as string) || session.user.email;
         session.user.name = (token.name as string) || session.user.name;
+        session.user.image = (token.picture as string) || session.user.image;
       }
       return session;
     },

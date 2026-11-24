@@ -1,8 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { attachments, batches, recipients, users } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { attachments, batches, recipients } from "@/lib/db/schema";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsBatch } from "@/lib/auth/isolation";
 import { batchSchema } from "@/lib/validations/batch";
 import { eq, desc, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -19,7 +20,7 @@ export interface BatchSummary {
 }
 
 export async function getBatches(): Promise<BatchSummary[]> {
-  await requireSession();
+  const userId = await requireUser();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -39,6 +40,7 @@ export async function getBatches(): Promise<BatchSummary[]> {
       })
       .from(batches)
       .leftJoin(recipients, eq(batches.id, recipients.batchId))
+      .where(eq(batches.userId, userId))
       .groupBy(batches.id)
       .orderBy(desc(batches.createdAt));
 
@@ -51,7 +53,7 @@ export async function getBatches(): Promise<BatchSummary[]> {
 }
 
 export async function getBatchById(id: string) {
-  await requireSession();
+  const userId = await requireUser();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -59,9 +61,7 @@ export async function getBatchById(id: string) {
   }
 
   try {
-    const [batch] = await db.select().from(batches).where(eq(batches.id, id)).limit(1);
-
-    if (!batch) return null;
+    const batch = await assertOwnsBatch(id, userId);
 
     const recipientList = await db
       .select()
@@ -91,7 +91,7 @@ export async function getBatchById(id: string) {
   } catch (err: unknown) {
     const error = err as Error;
     console.warn(
-      "[getBatchById Warning]: Database belum dapat dihubungi:",
+      "[getBatchById Warning]: Gagal mengambil data batch:",
       error?.message || error
     );
     return null;
@@ -99,7 +99,7 @@ export async function getBatchById(id: string) {
 }
 
 export async function createBatch(data: { name: string }) {
-  const session = await requireSession();
+  const userId = await requireUser();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -119,29 +119,10 @@ export async function createBatch(data: { name: string }) {
   }
 
   try {
-    const userEmail = session.user?.email || "user.demo@example.com";
-    let user = await db.query.users.findFirst({
-      where: eq(users.email, userEmail),
-    });
-    if (!user) {
-      const [created] = await db
-        .insert(users)
-        .values({
-          email: userEmail,
-          name: session.user?.name || "Pengguna",
-        })
-        .onConflictDoUpdate({
-          target: [users.email],
-          set: { name: session.user?.name || "Pengguna" },
-        })
-        .returning();
-      user = created;
-    }
-
     const [newBatch] = await db
       .insert(batches)
       .values({
-        userId: user.id,
+        userId,
         name: validation.data.name.trim(),
       })
       .returning();
@@ -159,7 +140,8 @@ export async function createBatch(data: { name: string }) {
 }
 
 export async function updateBatchName(id: string, name: string) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(id, userId);
 
   const validation = batchSchema.safeParse({ name });
   if (!validation.success) {
@@ -196,7 +178,8 @@ export async function updateBatchName(id: string, name: string) {
 }
 
 export async function deleteBatch(id: string) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(id, userId);
 
   try {
     // Clean up all Vercel Blob files belonging to recipients in this batch

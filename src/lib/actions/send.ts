@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db";
 import { attachments, batches, recipients, sendLogs } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsRecipient } from "@/lib/auth/isolation";
 import { getEmailProvider } from "@/lib/email";
 import { generateEmailHtml, generateEmailText } from "@/lib/email/template";
 import { EmailAttachment } from "@/lib/email/types";
@@ -13,7 +14,7 @@ import { getMockFile, deleteMockFile } from "@/lib/storage/mock-store";
 import { DAILY_SEND_LIMIT, DailyQuotaResult, SendRecipientResult } from "./send-types";
 
 export async function getDailySendQuota(): Promise<DailyQuotaResult> {
-  await requireSession();
+  const userId = await requireUser();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -25,7 +26,7 @@ export async function getDailySendQuota(): Promise<DailyQuotaResult> {
     const [row] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(sendLogs)
-      .where(and(eq(sendLogs.event, "sent"), gte(sendLogs.createdAt, oneDayAgo)));
+      .where(and(eq(sendLogs.userId, userId), eq(sendLogs.event, "sent"), gte(sendLogs.createdAt, oneDayAgo)));
 
     const used = row?.count || 0;
     return {
@@ -40,7 +41,8 @@ export async function getDailySendQuota(): Promise<DailyQuotaResult> {
 }
 
 export async function sendRecipient(recipientId: string): Promise<SendRecipientResult> {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsRecipient(recipientId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -95,7 +97,6 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     where: eq(batches.id, recipient.batchId),
   });
   const batchName = batchRow?.name || "Periode Gaji";
-  const userId = batchRow!.userId;
 
   // 4. Record attempt event in send_logs
   await db.insert(sendLogs).values({
@@ -357,7 +358,7 @@ export async function resolveUnknownStatus(
   recipientId: string,
   resolution: "sent" | "failed"
 ): Promise<{ success: boolean; error?: string }> {
-  await requireSession();
+  const userId = await requireUser();
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -375,8 +376,8 @@ export async function resolveUnknownStatus(
     .innerJoin(batches, eq(recipients.batchId, batches.id))
     .where(eq(recipients.id, recipientId));
 
-  if (!recipient) {
-    return { success: false, error: "Penerima tidak ditemukan." };
+  if (!recipient || recipient.userId !== userId) {
+    return { success: false, error: "Penerima tidak ditemukan atau bukan milik Anda." };
   }
 
   if (recipient.status !== "unknown") {

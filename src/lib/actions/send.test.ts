@@ -8,7 +8,13 @@ vi.mock("@/auth", () => ({
 }));
 
 vi.mock("@/lib/auth/session", () => ({
-  requireSession: vi.fn().mockResolvedValue({ user: { email: "admin@example.com" } }),
+  requireUser: vi.fn().mockResolvedValue("user-123"),
+  requireSession: vi.fn().mockResolvedValue({ user: { id: "user-123", email: "user@example.com" } }),
+}));
+
+vi.mock("@/lib/auth/isolation", () => ({
+  assertOwnsRecipient: vi.fn().mockResolvedValue({ id: "rec-1", batchId: "batch-1", batch: { id: "batch-1", userId: "user-123" } }),
+  assertOwnsBatch: vi.fn().mockResolvedValue({ id: "batch-1", userId: "user-123", name: "Batch Demo" }),
 }));
 
 describe("Send Recipient Workflow & Guard Rules", () => {

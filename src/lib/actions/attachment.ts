@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db";
 import { attachments, recipients } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsBatch, assertOwnsRecipient } from "@/lib/auth/isolation";
 import {
   attachmentInputSchema,
   MAX_ATTACHMENTS_PER_RECIPIENT,
@@ -15,7 +16,9 @@ import { del } from "@vercel/blob";
 import { deleteMockFile } from "@/lib/storage/mock-store";
 
 export async function saveAttachment(batchId: string, recipientId: string, input: AttachmentInput) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
+  await assertOwnsRecipient(recipientId, userId);
 
   const validation = attachmentInputSchema.safeParse(input);
   if (!validation.success) {
@@ -87,7 +90,9 @@ export async function saveAttachment(batchId: string, recipientId: string, input
 }
 
 export async function deleteAttachment(attachmentId: string, recipientId: string, batchId: string) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
+  await assertOwnsRecipient(recipientId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -143,7 +148,8 @@ export async function deleteAttachment(attachmentId: string, recipientId: string
 }
 
 export async function getAttachmentsByRecipient(recipientId: string) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsRecipient(recipientId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {

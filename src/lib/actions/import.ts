@@ -1,8 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { batches, recipients } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { recipients } from "@/lib/db/schema";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsBatch } from "@/lib/auth/isolation";
 import { singleImportRecipientSchema } from "@/lib/validations/import";
 import { MAX_RECIPIENTS_PER_BATCH } from "@/lib/validations/recipient";
 import { eq, count } from "drizzle-orm";
@@ -24,7 +25,8 @@ export async function importRecipientsBatch(
   batchId: string,
   items: ImportRecipientInput[]
 ): Promise<ImportBatchResult> {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -36,21 +38,7 @@ export async function importRecipientsBatch(
     };
   }
 
-  // 1. Verify batch exists
-  const batch = await db.query.batches.findFirst({
-    where: eq(batches.id, batchId),
-  });
-
-  if (!batch) {
-    return {
-      success: false,
-      insertedCount: 0,
-      skippedCount: items.length,
-      error: "Batch tidak ditemukan.",
-    };
-  }
-
-  // 2. Check current recipient count in batch
+  // 1. Check current recipient count in batch
   const [currentCountRow] = await db
     .select({ total: count() })
     .from(recipients)
@@ -68,7 +56,7 @@ export async function importRecipientsBatch(
     };
   }
 
-  // 3. Filter and validate items server-side with Zod
+  // 2. Filter and validate items server-side with Zod
   const validItems: { name: string; email: string }[] = [];
   const seenEmailsInPayload = new Set<string>();
 
@@ -95,10 +83,10 @@ export async function importRecipientsBatch(
     };
   }
 
-  // 4. Enforce quota: cannot exceed remaining slots
+  // 3. Enforce quota: cannot exceed remaining slots
   const itemsToInsert = validItems.slice(0, remainingSlots);
 
-  // 5. Insert using onConflictDoNothing to prevent duplicates
+  // 4. Insert using onConflictDoNothing to prevent duplicates
   try {
     const inserted = await db
       .insert(recipients)

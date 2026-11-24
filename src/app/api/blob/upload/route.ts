@@ -1,12 +1,15 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsRecipient } from "@/lib/auth/isolation";
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/validations/attachment";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  // 1. Enforce session check on route handler
-  const session = await auth();
-  if (!session?.user) {
+  // 1. Enforce user authentication on route handler
+  let userId: string;
+  try {
+    userId = await requireUser();
+  } catch {
     return NextResponse.json(
       { error: "Unauthorized: Sesi tidak valid atau belum masuk." },
       { status: 401 }
@@ -24,9 +27,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       type: "blob.generate-client-token",
       isMock: true,
       clientToken: "mock-client-token",
+      userId,
       mockBlob: {
         url: `${url.origin}/api/blob/mock/${mockFilename}`,
-        pathname: `payslips/mock/${mockFilename}`,
+        pathname: `${userId}/mock/${mockFilename}`,
       },
     });
   }
@@ -37,7 +41,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (_pathname, clientPayload) => {
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
+        // Verify that clientPayload has recipientId and the user owns this recipient
+        if (clientPayload) {
+          try {
+            const parsed = typeof clientPayload === "string" ? JSON.parse(clientPayload) : clientPayload;
+            if (parsed?.recipientId) {
+              await assertOwnsRecipient(parsed.recipientId, userId);
+            }
+          } catch (payloadErr: unknown) {
+            const e = payloadErr as Error;
+            throw new Error(`Verifikasi kepemilikan penerima gagal: ${e.message}`);
+          }
+        }
+
         return {
           allowedContentTypes: [...ALLOWED_MIME_TYPES],
           maximumSizeInBytes: MAX_FILE_SIZE_BYTES,

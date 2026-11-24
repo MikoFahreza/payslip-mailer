@@ -38,8 +38,19 @@ export default async function AppProtectedLayout({ children }: { children: React
 
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-800 rounded-full px-3 py-1 bg-neutral-100/50 dark:bg-neutral-800/50">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{session.user.email}</span>
+              {session.user.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={session.user.image}
+                  alt={session.user.name || "Foto Profil"}
+                  className="w-4 h-4 rounded-full object-cover"
+                />
+              ) : (
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              )}
+              <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                {session.user.name || session.user.email}
+              </span>
             </div>
 
             <LogoutButton />

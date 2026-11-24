@@ -103,8 +103,13 @@ export function validateAttachmentFile(file: { name: string; size: number; type:
 /**
  * Generates an unguessable, secure pathname for Vercel Blob storage.
  */
-export function generateSecureBlobPathname(recipientId: string, originalFilename: string): string {
+export function generateSecureBlobPathname(
+  recipientId: string,
+  originalFilename: string,
+  userId?: string
+): string {
   const sanitized = sanitizeFilename(originalFilename);
   const randomSuffix = crypto.randomUUID();
-  return `payslips/${recipientId}/${randomSuffix}-${sanitized}`;
+  const basePrefix = userId ? `${userId}` : "payslips";
+  return `${basePrefix}/${recipientId}/${randomSuffix}-${sanitized}`;
 }

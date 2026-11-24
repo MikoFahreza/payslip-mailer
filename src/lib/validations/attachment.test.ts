@@ -125,6 +125,15 @@ describe("Fase 3: Attachment Validation & Sanitization", () => {
       // Pathname must be unpredictable to prevent unauthorized guessing
       expect(pathname.length).toBeGreaterThan(50);
     });
+
+    it("should prefix pathname with userId when provided", () => {
+      const userId = "user-abc-123";
+      const recipientId = "123e4567-e89b-12d3-a456-426614174000";
+      const pathname = generateSecureBlobPathname(recipientId, "slip.pdf", userId);
+
+      expect(pathname.startsWith(`${userId}/${recipientId}/`)).toBe(true);
+      expect(pathname).toContain("slip.pdf");
+    });
   });
 
   describe("Limits Specifications", () => {

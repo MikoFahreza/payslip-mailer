@@ -2,14 +2,19 @@
 
 import { db } from "@/lib/db";
 import { attachments, recipients } from "@/lib/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
+import { assertOwnsBatch, assertOwnsRecipient } from "@/lib/auth/isolation";
 import { recipientSchema } from "@/lib/validations/recipient";
 import { eq, and, ne, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { del } from "@vercel/blob";
 
-export async function addRecipient(batchId: string, data: { name: string; email: string }) {
-  await requireSession();
+export async function addRecipient(
+  batchId: string,
+  data: { name: string; email: string; contactId?: string }
+) {
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -64,6 +69,7 @@ export async function addRecipient(batchId: string, data: { name: string; email:
       .insert(recipients)
       .values({
         batchId,
+        contactId: data.contactId || null,
         name: normalizedName,
         email: normalizedEmail,
         status: "pending",
@@ -96,7 +102,9 @@ export async function updateRecipient(
   batchId: string,
   data: { name: string; email: string }
 ) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
+  await assertOwnsRecipient(id, userId);
 
   const validation = recipientSchema.safeParse(data);
   if (!validation.success) {
@@ -164,7 +172,9 @@ export async function updateRecipient(
 }
 
 export async function deleteRecipient(id: string, batchId: string) {
-  await requireSession();
+  const userId = await requireUser();
+  await assertOwnsBatch(batchId, userId);
+  await assertOwnsRecipient(id, userId);
 
   try {
     // 1. Clean up all Vercel Blob files belonging to this recipient
