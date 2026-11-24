@@ -1,7 +1,7 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/session";
-import { assertOwnsRecipient } from "@/lib/auth/isolation";
+import { assertOwnsRecipient, assertOwnsBlobPathname } from "@/lib/auth/isolation";
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/validations/attachment";
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -42,6 +42,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       body,
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
+        // Enforce that blob pathname is scoped to this user
+        assertOwnsBlobPathname(pathname, userId);
+
         // Verify that clientPayload has recipientId and the user owns this recipient
         if (clientPayload) {
           try {

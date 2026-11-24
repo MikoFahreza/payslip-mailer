@@ -3,7 +3,12 @@
 import { db } from "@/lib/db";
 import { attachments, recipients } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
-import { assertOwnsBatch, assertOwnsRecipient } from "@/lib/auth/isolation";
+import {
+  assertOwnsBatch,
+  assertOwnsRecipient,
+  assertOwnsAttachment,
+  assertOwnsBlobPathname,
+} from "@/lib/auth/isolation";
 import {
   attachmentInputSchema,
   MAX_ATTACHMENTS_PER_RECIPIENT,
@@ -19,6 +24,7 @@ export async function saveAttachment(batchId: string, recipientId: string, input
   const userId = await requireUser();
   await assertOwnsBatch(batchId, userId);
   await assertOwnsRecipient(recipientId, userId);
+  assertOwnsBlobPathname(input.blobPathname, userId);
 
   const validation = attachmentInputSchema.safeParse(input);
   if (!validation.success) {
@@ -93,6 +99,7 @@ export async function deleteAttachment(attachmentId: string, recipientId: string
   const userId = await requireUser();
   await assertOwnsBatch(batchId, userId);
   await assertOwnsRecipient(recipientId, userId);
+  await assertOwnsAttachment(attachmentId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {

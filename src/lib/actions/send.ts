@@ -377,6 +377,7 @@ export async function resolveUnknownStatus(
   resolution: "sent" | "failed"
 ): Promise<{ success: boolean; error?: string }> {
   const userId = await requireUser();
+  await assertOwnsRecipient(recipientId, userId);
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
@@ -388,14 +389,12 @@ export async function resolveUnknownStatus(
       id: recipients.id,
       batchId: recipients.batchId,
       status: recipients.status,
-      userId: batches.userId,
     })
     .from(recipients)
-    .innerJoin(batches, eq(recipients.batchId, batches.id))
     .where(eq(recipients.id, recipientId));
 
-  if (!recipient || recipient.userId !== userId) {
-    return { success: false, error: "Penerima tidak ditemukan atau bukan milik Anda." };
+  if (!recipient) {
+    return { success: false, error: "Penerima tidak ditemukan." };
   }
 
   if (recipient.status !== "unknown") {
@@ -413,7 +412,7 @@ export async function resolveUnknownStatus(
       .where(eq(recipients.id, recipientId));
 
     await db.insert(sendLogs).values({
-      userId: recipient.userId,
+      userId,
       recipientId,
       event: "sent",
       detail: "Admin menandai status sebagai terkirim secara manual.",
@@ -449,7 +448,7 @@ export async function resolveUnknownStatus(
       .where(eq(recipients.id, recipientId));
 
     await db.insert(sendLogs).values({
-      userId: recipient.userId,
+      userId,
       recipientId,
       event: "failed",
       detail: "Admin menandai status sebagai gagal secara manual.",

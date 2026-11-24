@@ -3,6 +3,9 @@ import {
   assertOwnsBatch,
   assertOwnsRecipient,
   assertOwnsContact,
+  assertOwnsAttachment,
+  assertOwnsSendLog,
+  assertOwnsBlobPathname,
   ForbiddenError,
   NotFoundError,
 } from "./isolation";
@@ -18,6 +21,12 @@ vi.mock("@/lib/db", () => ({
         findFirst: vi.fn(),
       },
       contacts: {
+        findFirst: vi.fn(),
+      },
+      attachments: {
+        findFirst: vi.fn(),
+      },
+      sendLogs: {
         findFirst: vi.fn(),
       },
     },
@@ -116,6 +125,80 @@ describe("Isolation Helpers", () => {
       vi.mocked(db.query.contacts.findFirst).mockResolvedValue(mockContact as never);
 
       await expect(assertOwnsContact("contact-2", currentUserId)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("assertOwnsAttachment", () => {
+    it("should return attachment when parent batch belongs to userId", async () => {
+      const mockAttachment = {
+        id: "att-1",
+        recipientId: "rec-1",
+        filename: "slip.pdf",
+        recipient: {
+          id: "rec-1",
+          batch: { id: "batch-1", userId: currentUserId },
+        },
+      };
+      vi.mocked(db.query.attachments.findFirst).mockResolvedValue(mockAttachment as never);
+
+      const result = await assertOwnsAttachment("att-1", currentUserId);
+      expect(result).toEqual(mockAttachment);
+    });
+
+    it("should throw NotFoundError if attachment does not exist", async () => {
+      vi.mocked(db.query.attachments.findFirst).mockResolvedValue(null as never);
+
+      await expect(assertOwnsAttachment("att-999", currentUserId)).rejects.toThrow(NotFoundError);
+    });
+
+    it("should throw ForbiddenError if attachment belongs to another user's recipient", async () => {
+      const mockAttachment = {
+        id: "att-2",
+        recipientId: "rec-2",
+        filename: "secret.pdf",
+        recipient: {
+          id: "rec-2",
+          batch: { id: "batch-2", userId: otherUserId },
+        },
+      };
+      vi.mocked(db.query.attachments.findFirst).mockResolvedValue(mockAttachment as never);
+
+      await expect(assertOwnsAttachment("att-2", currentUserId)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("assertOwnsSendLog", () => {
+    it("should return sendLog when userId matches", async () => {
+      const mockLog = { id: "log-1", userId: currentUserId, event: "sent" };
+      vi.mocked(db.query.sendLogs.findFirst).mockResolvedValue(mockLog as never);
+
+      const result = await assertOwnsSendLog("log-1", currentUserId);
+      expect(result).toEqual(mockLog);
+    });
+
+    it("should throw NotFoundError if sendLog does not exist", async () => {
+      vi.mocked(db.query.sendLogs.findFirst).mockResolvedValue(null as never);
+
+      await expect(assertOwnsSendLog("log-999", currentUserId)).rejects.toThrow(NotFoundError);
+    });
+
+    it("should throw ForbiddenError if sendLog belongs to another user", async () => {
+      const mockLog = { id: "log-2", userId: otherUserId, event: "sent" };
+      vi.mocked(db.query.sendLogs.findFirst).mockResolvedValue(mockLog as never);
+
+      await expect(assertOwnsSendLog("log-2", currentUserId)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe("assertOwnsBlobPathname", () => {
+    it("should accept pathnames starting with user ID prefix", () => {
+      expect(() => assertOwnsBlobPathname(`${currentUserId}/slips/jan.pdf`, currentUserId)).not.toThrow();
+      expect(() => assertOwnsBlobPathname(`/${currentUserId}/slips/jan.pdf`, currentUserId)).not.toThrow();
+    });
+
+    it("should throw ForbiddenError when attempting to access another user's pathname", () => {
+      expect(() => assertOwnsBlobPathname(`${otherUserId}/slips/jan.pdf`, currentUserId)).toThrow(ForbiddenError);
+      expect(() => assertOwnsBlobPathname("root-file.pdf", currentUserId)).toThrow(ForbiddenError);
     });
   });
 });

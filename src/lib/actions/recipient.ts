@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { attachments, recipients } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/session";
-import { assertOwnsBatch, assertOwnsRecipient } from "@/lib/auth/isolation";
+import { assertOwnsBatch, assertOwnsRecipient, assertOwnsContact } from "@/lib/auth/isolation";
 import { recipientSchema } from "@/lib/validations/recipient";
 import { eq, and, ne, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -15,6 +15,9 @@ export async function addRecipient(
 ) {
   const userId = await requireUser();
   await assertOwnsBatch(batchId, userId);
+  if (data.contactId) {
+    await assertOwnsContact(data.contactId, userId);
+  }
 
   const url = process.env.DATABASE_URL;
   if (!url || url.includes("ep-sample-pooler")) {
