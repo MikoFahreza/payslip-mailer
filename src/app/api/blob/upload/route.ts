@@ -18,6 +18,16 @@ export async function GET(): Promise<NextResponse> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   const isMock = !token || token.includes("sample");
 
+  if (isMock && process.env.VERCEL === "1") {
+    return NextResponse.json(
+      {
+        error:
+          "Konfigurasi Vercel Blob (BLOB_READ_WRITE_TOKEN) belum aktif di server Vercel. Tambahkan Vercel Blob di tab Storage lalu redeploy.",
+      },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({
     isMock,
     userId,
@@ -46,6 +56,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   // If running in development with sample placeholder token, provide simulated token
   if (isSampleToken) {
+    if (process.env.VERCEL === "1") {
+      return NextResponse.json(
+        {
+          error:
+            "Konfigurasi Vercel Blob (BLOB_READ_WRITE_TOKEN) belum aktif di server Vercel.",
+        },
+        { status: 500 }
+      );
+    }
+
     const url = new URL(request.url);
     const mockFilename = `mock_${Date.now()}`;
     return NextResponse.json({

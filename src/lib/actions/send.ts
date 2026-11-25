@@ -111,6 +111,9 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     .from(attachments)
     .where(eq(attachments.recipientId, recipient.id));
 
+  // Resolve user's email provider upfront so we know whether real Gmail or simulation is used
+  const providerInfo = await getUserEmailProvider(userId);
+
   // 5. Download attachments
   const emailAttachments: EmailAttachment[] = [];
   let totalAttachmentBytes = 0;
@@ -125,9 +128,13 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
         const localFile = getMockFile(fileId);
         if (localFile) {
           buffer = localFile.buffer;
-        } else {
-          // Graceful fallback for mock files from previous session
+        } else if (providerInfo.isSimulated) {
+          // Graceful fallback only in simulated mode
           buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
+        } else {
+          throw new Error(
+            "File tidak ditemukan di penyimpanan sementara server (mock). Pastikan BLOB_READ_WRITE_TOKEN aktif dan unggah ulang lampiran."
+          );
         }
       } else if (att.blobUrl.startsWith("http")) {
         try {
@@ -137,21 +144,27 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
           }
           const arrayBuf = await fileRes.arrayBuffer();
           buffer = Buffer.from(arrayBuf);
+          if (buffer.byteLength === 0) {
+            throw new Error("File lampiran yang diunduh kosong (0 byte).");
+          }
         } catch (fetchErr: unknown) {
-          // If it's a mock or localhost URL, gracefully fallback to simulated content
+          // Only fallback for mock/sample/localhost URLs when running in simulated mode
           if (
-            att.blobUrl.includes("mock") ||
-            att.blobUrl.includes("sample") ||
-            att.blobUrl.includes("localhost")
+            providerInfo.isSimulated &&
+            (att.blobUrl.includes("mock") ||
+              att.blobUrl.includes("sample") ||
+              att.blobUrl.includes("localhost"))
           ) {
             buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
           } else {
             throw fetchErr;
           }
         }
-      } else {
+      } else if (providerInfo.isSimulated) {
         // Fallback for simulated blob URLs in mock/test mode
         buffer = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
+      } else {
+        throw new Error("URL file lampiran tidak valid.");
       }
 
       totalAttachmentBytes += buffer.byteLength;
@@ -163,8 +176,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
     } catch (downloadErr: unknown) {
       const err = downloadErr as Error;
       // If we cannot download attachment in simulate mode, generate mock buffer
-      const mode = process.env.EMAIL_MODE?.toLowerCase();
-      if (mode !== "live") {
+      if (providerInfo.isSimulated) {
         const dummyBuf = Buffer.from(`Isi lampiran simulasi untuk ${att.filename}`);
         emailAttachments.push({
           filename: att.filename,
@@ -238,8 +250,7 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
   });
 
   // 7. Send email via user's email provider (Gmail if connected, Simulate if not)
-  const { provider } = await getUserEmailProvider(userId);
-  const sendResult = await provider.sendEmail({
+  const sendResult = await providerInfo.provider.sendEmail({
     to: recipient.email,
     toName: recipient.name,
     subject,

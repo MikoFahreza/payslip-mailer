@@ -307,4 +307,56 @@ describe("GmailProvider (Fase R4)", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBe("Hubungkan ulang Gmail");
   });
+
+  it("should wrap attachment base64 lines to 76 chars and preserve exact binary bytes", async () => {
+    const provider = new GmailProvider({
+      clientId: "dummy-client-id",
+      clientSecret: "dummy-client-secret",
+      refreshToken: "dummy-refresh-token",
+      senderEmail: "pengirim@gmail.com",
+    });
+
+    let capturedBody = "";
+    global.fetch = vi.fn().mockImplementation(async (_url, init) => {
+      capturedBody = String(init?.body || "");
+      return {
+        ok: true,
+        json: async () => ({ id: "msg-binary-ok" }),
+      } as unknown as Response;
+    });
+
+    // Binary payload > 100 bytes so base64 wraps across multiple 76-char lines
+    const originalBytes = Buffer.from(
+      Array.from({ length: 256 }, (_, i) => i) // all byte values 0x00..0xff
+    );
+
+    const result = await provider.sendEmail({
+      to: "penerima@example.com",
+      toName: "Penerima",
+      subject: "Slip Gaji PDF",
+      html: "<p>Lampiran terlampir</p>",
+      attachments: [
+        {
+          filename: "slip_gaji.pdf",
+          contentType: "application/pdf",
+          content: originalBytes,
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    const parsed = JSON.parse(capturedBody) as { raw: string };
+    const decodedMime = Buffer.from(parsed.raw, "base64url").toString("utf8");
+
+    // Extract base64 block from the attachment part
+    const parts = decodedMime.split('Content-Disposition: attachment; filename="slip_gaji.pdf"');
+    expect(parts.length).toBe(2);
+    const attachmentBodySection = parts[1].split("--")[0].trim();
+    const lines = attachmentBodySection.split(/\r?\n/);
+    expect(lines.every((l) => l.length <= 76)).toBe(true);
+
+    // Reassemble base64 and verify exact byte-for-byte match
+    const restoredBytes = Buffer.from(lines.join(""), "base64");
+    expect(Buffer.compare(restoredBytes, originalBytes)).toBe(0);
+  });
 });

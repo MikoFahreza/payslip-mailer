@@ -224,10 +224,13 @@ export class GmailProvider implements EmailProvider {
       });
 
       for (const att of attachments) {
+        const base64Raw = att.content.toString("base64");
+        // Wrap base64 at 76 chars per RFC 2045 to avoid >998 char line corruption across mail servers
+        const base64Wrapped = (base64Raw.match(/.{1,76}/g) || []).join("\r\n");
         msg.addAttachment({
           filename: att.filename,
           contentType: att.contentType,
-          data: att.content.toString("base64"),
+          data: base64Wrapped,
         });
       }
 
