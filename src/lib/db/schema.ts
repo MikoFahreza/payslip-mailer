@@ -33,7 +33,9 @@ export const gmailConnectionStatusEnum = pgEnum("gmail_connection_status", [
   "revoked",
 ]);
 
-// 1. Users Table (Hybrid Auth: Google OAuth + Credentials)
+export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+
+// 1. Users Table (Admin-Managed Credentials Auth)
 export const users = pgTable(
   "users",
   {
@@ -42,6 +44,7 @@ export const users = pgTable(
     name: varchar("name", { length: 255 }),
     image: text("image"),
     passwordHash: text("password_hash"),
+    role: userRoleEnum("role").default("user").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -268,3 +271,4 @@ export type RecipientStatus = (typeof recipientStatusEnum.enumValues)[number];
 export type AttachmentKind = (typeof attachmentKindEnum.enumValues)[number];
 export type SendLogEvent = (typeof sendLogEventEnum.enumValues)[number];
 export type GmailConnectionStatus = (typeof gmailConnectionStatusEnum.enumValues)[number];
+export type UserRole = (typeof userRoleEnum.enumValues)[number];

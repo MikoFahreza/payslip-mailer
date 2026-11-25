@@ -1,7 +1,7 @@
 # Payslip Mailer
 
-> **Aplikasi Web Multi-User Pengiriman Slip Gaji & Bukti Transfer Karyawan**  
-> Dibangun dengan arsitektur serverless modern: Next.js 16 (App Router), TypeScript Strict, Drizzle ORM, Neon Postgres, Vercel Blob, Auth.js v5, Enkripsi AES-256-GCM, dan Gmail REST API per pengguna.
+> **Aplikasi Web Terkelola Pengiriman Slip Gaji & Bukti Transfer Karyawan**  
+> Dibangun dengan arsitektur serverless modern: Next.js 16 (App Router), TypeScript Strict, Drizzle ORM, Neon Postgres, Vercel Blob, Auth.js v5, Enkripsi AES-256-GCM, dan Gmail REST API per pengguna dengan kontrol peran Administrator.
 
 ---
 
@@ -9,8 +9,8 @@
 
 1. [Tujuan & Cakupan Proyek](#tujuan--cakupan-proyek)
 2. [Arsitektur & Tech Stack](#arsitektur--tech-stack)
-3. [Arsitektur Autentikasi Dua Langkah (Hybrid)](#arsitektur-autentikasi-dua-langkah-hybrid)
-4. [Model Data Baru (Multi-User v2)](#model-data-baru-multi-user-v2)
+3. [Arsitektur Autentikasi & Peran Admin](#arsitektur-autentikasi--peran-admin)
+4. [Model Data (Multi-User & Role)](#model-data-multi-user--role)
 5. [Catatan Keputusan Arsitektur & Keamanan](#catatan-keputusan-arsitektur--keamanan)
 6. [Catatan Mode Simulasi](#catatan-mode-simulasi)
 7. [Batas Pengguna Google & Batas Sistem](#batas-pengguna-google--batas-sistem)
@@ -24,17 +24,18 @@
 
 ## Tujuan & Cakupan Proyek
 
-Aplikasi **Payslip Mailer** dirancang agar setiap pengguna (HR / admin keuangan) memiliki ruang kerja yang terisolasi untuk mengelola kontak karyawan, menyusun batch periode gaji, mengunggah dokumen lampiran, dan mengirimkan email langsung dari akun Gmail masing-masing:
+Aplikasi **Payslip Mailer** dirancang agar organisasi dapat mengontrol siapa saja yang memiliki akses pengiriman slip gaji (dikelola oleh **Admin**), sambil tetap memberi ruang kerja terisolasi bagi setiap operator untuk mengelola kontak karyawan, menyusun batch periode gaji, mengunggah dokumen lampiran, dan mengirim email melalui akun Gmail terhubung:
 
 - **Termasuk**:
-  - **Autentikasi Hybrid Multi-User**: Masuk langsung dengan Google (otomatis terhubung ke Gmail) atau daftar/masuk menggunakan email & kata sandi (`bcryptjs`) lalu menghubungkan Gmail secara terpisah.
-  - **Koneksi Gmail per Pengguna**: Otorisasi OAuth2 terpisah (`/api/gmail/connect` & `/api/gmail/callback`) dengan PKCE + `state` terikat sesi, dan penyimpanan *refresh token* terenkripsi **AES-256-GCM**.
-  - **Buku Kontak (`/app/contacts`)**: Manajemen kontak terpusat (tambah, ubah, cari, arsip/pulihkan, hapus permanen, batas 200 kontak aktif per pengguna) beserta impor massal CSV/Excel dengan *upsert* otomatis.
+  - **Autentikasi Terkelola Berbasis Peran (`admin` & `user`)**: Login menggunakan email & kata sandi (`bcryptjs`) tanpa pendaftaran mandiri maupun tombol *Login with Google* publik.
+  - **Panel Manajemen Pengguna (`/app/admin/users`)**: Khusus role `admin` untuk menambah akun pengguna baru, mengubah peran, mereset kata sandi, memantau status Gmail, dan menghapus pengguna.
+  - **Koneksi Gmail per Pengguna (`/app/settings`)**: Otorisasi OAuth2 terpisah (`/api/gmail/connect` & `/api/gmail/callback`) dengan PKCE + `state` terikat sesi, serta penyimpanan *refresh token* terenkripsi **AES-256-GCM**.
+  - **Buku Kontak (`/app/contacts`)**: Manajemen kontak terpusat (tambah, ubah, cari, arsip/pulihkan, hapus permanen, batas 200 kontak per pengguna) beserta impor massal CSV/Excel dengan *upsert* otomatis.
   - **Manajemen Batch & Penerima (`/app/batches/[id]`)**: Tambah penerima manual (opsi simpan ke buku kontak), pilih multi-kontak dari daftar, tombol *"Tambah Semua Kontak Aktif"*, impor massal jalan pintas, serta duplikasi batch.
   - **Unggah Lampiran Aman**: Direct upload dari peramban ke Vercel Blob dengan prefix `${userId}/...` (maks. 3 file/penerima, maks. 4 MB/file, format PDF/PNG/JPG).
-  - **Pengiriman Bertahap & Anti-Kirim Ganda**: Pengiriman berurutan via Gmail REST API dengan MIME multipart, transisi status atomik di database, kuota harian per pengguna, dan pembersihan file Blob otomatis setelah terkirim.
-  - **Pengaturan & Privasi (`/app/settings` & `/privacy`)**: Putuskan koneksi Gmail (cabut token di Google + hapus DB), hapus akun permanen beserta seluruh data dan file Blob, serta halaman Kebijakan Privasi publik.
-- **Tidak Termasuk**: WhatsApp, AI, sistem pembayaran, enkripsi password PDF, perhitungan nominal gaji.
+  - **Pengiriman Bertahap & Anti-Kirim Ganda**: Pengiriman berurutan via Gmail REST API dengan MIME multipart (base64 wrapped 76-char RFC 2045), transisi status atomik di database, kuota harian per pengguna, dan pembersihan file Blob otomatis setelah terkirim.
+  - **Pengaturan & Privasi (`/app/settings` & `/privacy`)**: Putuskan koneksi Gmail (cabut token di Google + hapus DB), hapus akun sendiri beserta seluruh data & Blob, dan halaman Kebijakan Privasi publik.
+- **Tidak Termasuk**: WhatsApp, AI, sistem pembayaran, enkripsi password PDF, perhitungan nominal gaji, pendaftaran mandiri publik.
 
 ---
 
@@ -46,42 +47,47 @@ Aplikasi **Payslip Mailer** dirancang agar setiap pengguna (HR / admin keuangan)
 | **Bahasa**       | TypeScript (Strict mode)           | Tipisasi ketat di seluruh klien dan server                       |
 | **Styling**      | Tailwind CSS v4 + shadcn/ui        | Desain bersih, responsif, dan mendukung mode gelap               |
 | **Basis Data**   | Postgres (Neon Serverless)         | Driver `@neondatabase/serverless` dengan connection pooling      |
-| **ORM**          | Drizzle ORM                        | Skema terpusat multi-user, migrasi terkelola, dan relasi cascade |
+| **ORM**          | Drizzle ORM                        | Skema terpusat dengan enum `user_role`, migrasi, dan cascade     |
 | **File Storage** | Vercel Blob (`@vercel/blob`)       | Unggah langsung dari browser via Client Token berisolasi `userId` |
-| **Autentikasi**  | Auth.js v5 (`next-auth`)           | Sesi JWT stateless, Google Provider & Credentials (`bcryptjs`)   |
+| **Autentikasi**  | Auth.js v5 (`next-auth`)           | Sesi JWT dengan Credentials Provider (`bcryptjs`) & Role RBAC    |
 | **Kriptografi**  | Node.js `crypto` (AES-256-GCM)     | Enkripsi *refresh token* dengan IV acak per nilai & auth tag     |
 | **Validasi**     | Zod v4                             | Skema validasi tunggal untuk klien dan server                    |
 | **Email**        | Gmail REST API + `mimetext`        | Antarmuka `EmailProvider` (`GmailProvider` & `SimulateProvider`) |
 | **Impor Berkas** | PapaParse (CSV) + SheetJS (`xlsx`) | Parsing di browser beserta deteksi salah ketik domain            |
-| **Pengujian**    | Vitest                             | 18 berkas pengujian dengan 144 unit & isolasi test otomatis      |
+| **Pengujian**    | Vitest                             | Unit, enkripsi, state machine, RBAC admin, dan isolasi antar-user |
 
 ---
 
-## Arsitektur Autentikasi Dua Langkah (Hybrid)
+## Arsitektur Autentikasi & Peran Admin
 
-Aplikasi memisahkan atau menyatukan login akun dan otorisasi kirim Gmail sesuai metode masuk yang dipilih pengguna:
+Aplikasi memisahkan pembuatan akun login (dikelola Admin) dan otorisasi akun Gmail pengirim:
 
-1. **Jalur 1 — Masuk dengan Google (Otomatis Terhubung)**:
-   - Pengguna menekan tombol **"Masuk dengan Google"** di `/login`.
-   - Auth.js meminta scope `openid email profile https://www.googleapis.com/auth/gmail.send` dengan `access_type=offline` dan `prompt=consent`.
-   - Callback `signIn` melakukan *upsert* ke tabel `users` dan, bila `refresh_token` diterima dari Google, langsung mengenkripsi dan menyimpannya ke tabel `gmail_connections` dengan status `connected`. Pengguna langsung siap mengirim email tanpa langkah tambahan.
+1. **Login Akun Internal (Email & Kata Sandi)**:
+   - Layar `/login` hanya menerima email dan kata sandi yang telah didaftarkan oleh **Administrator**.
+   - Dilindungi oleh *rate limiting* (maksimal 5 kali gagal per email sebelum jeda tunggu 15 menit) dan verifikasi hash `bcryptjs`.
+   - Sesi JWT menyimpan `userId` dan `role` (`admin` | `user`). Callback JWT menyinkronkan peran terbaru dari database serta otomatis mencabut sesi jika user telah dihapus.
 
-2. **Jalur 2 — Daftar / Masuk via Email & Kata Sandi + Hubungkan Gmail Terpisah**:
-   - Pengguna mendaftar atau masuk di `/login` menggunakan email & kata sandi (hash `bcryptjs` disimpan di `users.passwordHash`).
-   - Selama belum menghubungkan akun Google, pengguna tetap dapat memakai seluruh fitur kontak, batch, dan unggah dokumen dalam **Mode Simulasi**.
-   - Untuk mengirim email nyata, pengguna menuju `/app/settings` lalu menekan **"Hubungkan Gmail"**:
-     1. `/api/gmail/connect` memverifikasi sesi (`requireUser()`), membuat nilai `state` acak (32-byte hex) dan PKCE (`code_verifier` & `code_challenge` SHA-256), menyimpannya di cookie HTTP-only terikat `userId`, lalu mengarahkan ke Google OAuth dengan scope `openid email https://www.googleapis.com/auth/gmail.send`.
-     2. `/api/gmail/callback` memverifikasi kecocokan `state` dan `userId` (anti-CSRF), menukar `code` dengan token memakai `code_verifier`, membaca alamat email Gmail dari endpoint `userinfo` Google, mengenkripsi *refresh token* dengan **AES-256-GCM**, lalu menyimpannya ke `gmail_connections`.
+2. **Bootstrap Admin Pertama (`npm run db:create-admin`)**:
+   - Karena tidak ada pendaftaran mandiri di UI, admin pertama dibuat melalui skrip CLI:
+     ```bash
+     npm run db:create-admin -- --email=admin@perusahaan.com --password=KataSandiKuat --name="Admin HR"
+     ```
+   - Setelah masuk sebagai `admin`, Anda dapat membuat akun operator lain langsung dari menu **Kelola Pengguna** (`/app/admin/users`).
+
+3. **Hubungkan Gmail Pengirim secara Opsional (`/app/settings`)**:
+   - Setiap akun (`admin` maupun `user`) dapat bekerja di **Mode Simulasi** tanpa Gmail, atau menghubungkan alamat Gmail pengirimnya melalui `/app/settings` -> **"Hubungkan Gmail"**:
+     1. `/api/gmail/connect` memverifikasi sesi (`requireUser()`), membuat `state` acak (32-byte hex) + PKCE SHA-256 (`code_verifier`/`code_challenge`), lalu mengarahkan ke Google OAuth dengan scope `openid email https://www.googleapis.com/auth/gmail.send`.
+     2. `/api/gmail/callback` memverifikasi kecocokan `state` dan `userId`, menukar `code` dengan token, membaca alamat email Gmail, mengenkripsi *refresh token* dengan **AES-256-GCM**, dan menyimpannya ke `gmail_connections`.
 
 ---
 
-## Model Data Baru (Multi-User v2)
+## Model Data (Multi-User & Role)
 
-Skema database (`src/lib/db/schema.ts`) dirancang dengan isolasi penuh terhadap `users.id`:
+Skema database (`src/lib/db/schema.ts`) terdiri dari 7 tabel utama dengan isolasi terhadap `users.id`:
 
 | Tabel | Relasi & Fungsi Utama |
 | :--- | :--- |
-| **`users`** | Menyimpan `id` (UUID), `email` (unik), `name`, `image`, dan `passwordHash` (opsional untuk login Credentials). Penghapusan baris memicu *cascade delete* ke seluruh data milik pengguna. |
+| **`users`** | Menyimpan `id` (UUID), `email` (unik), `name`, `image`, `passwordHash`, dan `role` (`admin` \| `user`). Penghapusan baris memicu *cascade delete* ke seluruh data milik pengguna. |
 | **`gmail_connections`** | Relasi 1-ke-1 dengan `users` (`userId` unik). Menyimpan `gmailEmail`, `refreshTokenEncrypted` (AES-256-GCM), `scope`, dan `status` (`connected` \| `revoked`). |
 | **`contacts`** | Buku kontak milik pengguna (`userId`, `name`, `email` ternormalisasi unik per pengguna, `archivedAt` untuk soft delete). |
 | **`batches`** | Periode pengiriman milik pengguna (`userId`, `name`, `createdAt`). |
@@ -93,36 +99,27 @@ Skema database (`src/lib/db/schema.ts`) dirancang dengan isolasi penuh terhadap 
 
 ## Catatan Keputusan Arsitektur & Keamanan
 
-1. **Isolasi Data Ketat Antar Pengguna**:
-   - Seluruh Server Actions dan Route Handlers memanggil `requireUser()` dari sesi JWT dan memverifikasi kepemilikan melalui helper `assertOwnsBatch()`, `assertOwnsRecipient()`, serta `assertOwnsContact()` (`src/lib/auth/isolation.ts`).
-   - Route `/api/blob/upload` memaksa pathname berkas dimulai dengan `${userId}/${batchId}/${recipientId}/...` agar tidak ada pengguna yang bisa menimpa atau mengakses berkas pengguna lain.
+1. **Kontrol Peran & Isolasi Data Ketat**:
+   - Semua rute `/app/admin/*` dilindungi di layer Proxy (`src/proxy.ts`) dan halaman server (`requireAdmin()`).
+   - Setiap Server Action admin (`src/lib/actions/admin-users.ts`) memverifikasi ulang peran `admin` langsung ke database (`assertLiveAdmin`), menolak *self-demotion* dan *self-deletion* dari panel admin, serta membersihkan token Google + file Blob sebelum menghapus user.
+   - Seluruh aksi data batch, penerima, kontak, dan lampiran memanggil `requireUser()`, `assertOwnsBatch()`, `assertOwnsRecipient()`, `assertOwnsContact()`, serta memaksa prefix pathname Blob `${userId}/...`.
 2. **Enkripsi Token AES-256-GCM (`src/lib/crypto/encryption.ts`)**:
-   - Setiap token dienkripsi menggunakan `TOKEN_ENCRYPTION_KEY` (32-byte Base64) dengan **IV acak 12-byte** per nilai dan menghasilkan payload `iv.authTag.ciphertext`.
-   - Token hanya didekripsi di memori server sesaat sebelum menukar access token untuk panggilan `GmailProvider`. Token tidak pernah dikirim ke browser atau dicatat di log.
-3. **Transisi Status Atomik (Anti-Kirim Ganda)**:
-   - Sebelum mengirim, sistem mengeksekusi `UPDATE recipients SET status = 'sending' WHERE id = ? AND status IN ('pending', 'failed') RETURNING id`. Jika 0 baris terpengaruh, pengiriman dibatalkan (`skipped`).
-4. **Pemetaan Error Gmail & Status `unknown`**:
-   - Error `invalid_grant` atau `401` otomatis menandai koneksi di `gmail_connections` sebagai `revoked` dan menghentikan pengiriman dengan pesan *"Hubungkan ulang Gmail"*.
-   - Error `429` / `5xx` dicatat sebagai `failed` dan bisa dikirim ulang.
-   - Timeout jaringan setelah permintaan dikirim ditandai `unknown` (tidak di-retry otomatis untuk mencegah kirim ganda; admin menyelesaikan manual via dialog).
-5. **Pembersihan File Otomatis**:
+   - Token Gmail dienkripsi dengan `TOKEN_ENCRYPTION_KEY` (32-byte Base64) + **IV acak 12-byte** per nilai dan hanya didekripsi di memori server saat mengirim email.
+3. **Transisi Status Atomik (Anti-Kirim Ganda) & RFC 2045 MIME**:
+   - Penguncian baris penerima dilakukan atomik (`UPDATE recipients SET status = 'sending' WHERE id = ? AND status IN ('pending', 'failed') RETURNING id`).
+   - Lampiran base64 dibungkus per **76 karakter** (`\r\n`) sesuai RFC 2045 dan tidak pernah mengirim file placeholder palsu saat pengiriman riil aktif.
+4. **Pembersihan File Otomatis**:
    - Begitu email berstatus `sent` (atau diselesaikan manual sebagai terkirim), file di Vercel Blob dan baris di `attachments` otomatis dihapus.
 
 ---
 
 ## Catatan Mode Simulasi
 
-Aplikasi secara otomatis menggunakan `SimulateProvider` (tidak mengirim email sungguhan) pada dua kondisi berikut:
-
+Aplikasi secara otomatis menggunakan `SimulateProvider` (tidak mengirim email nyata) pada dua kondisi:
 1. Environment variable **`EMAIL_MODE=simulate`** aktif.
-2. Pengguna masuk tanpa akun Google dan **belum menghubungkan Gmail** di `/app/settings` (atau koneksi berstatus **`revoked`**), meskipun `EMAIL_MODE=live`.
+2. Pengguna **belum menghubungkan Gmail** di `/app/settings` (atau koneksi berstatus **`revoked`**).
 
-Pada kondisi simulasi:
-- Antarmuka halaman batch dan tombol kirim menampilkan label yang jelas: **"Simulasi (EMAIL_MODE=simulate)"** atau **"Simulasi (Gmail belum terhubung)"**.
-- `SimulateProvider` menunda eksekusi secara singkat, lalu mencatat pengiriman sukses di `send_logs`.
-- Untuk keperluan pengujian error tanpa mengirim ke alamat riil, `SimulateProvider` mendukung pola email khusus:
-  - Email diawali `fail@` atau mengandung `force-fail` -> menyimulasikan kegagalan (`failed`).
-  - Email diawali `timeout@` atau mengandung `force-timeout` -> menyimulasikan hasil tidak pasti (`unknown`).
+Label **"Simulasi (EMAIL_MODE=simulate)"** atau **"Simulasi (Gmail belum terhubung)"** tampil jelas pada halaman batch dan tombol kirim. Untuk uji skenario error di mode simulasi, `SimulateProvider` mendukung email diawali `fail@` / `force-fail` (simulasi gagal) dan `timeout@` / `force-timeout` (simulasi status `unknown`).
 
 ---
 
@@ -130,21 +127,20 @@ Pada kondisi simulasi:
 
 | Kategori | Batas | Keterangan |
 | :--- | :--- | :--- |
-| **Google Cloud Mode Testing** | Maks. **100 Test Users** | Selama aplikasi di Google Cloud Console berstatus *Testing*, hanya email yang didaftarkan pada tab *Audience -> Test users* yang diizinkan melakukan OAuth. |
-| **Masa Berlaku Token Testing** | **7 Hari** | Pada aplikasi Google OAuth yang berstatus *Testing*, *refresh token* kedaluwarsa setelah 7 hari. Bila terjadi, status koneksi berubah ke `revoked` dan pengguna cukup menekan **"Hubungkan Ulang Gmail"**. |
-| **Kuota Harian Aplikasi** | **100 email / 24 jam / user** | Dihitung per pengguna dari tabel `send_logs` (`event = 'sent'`) dalam 24 jam terakhir. |
-| **Kuota Google Gmail API** | ~500 (gratis) / ~2.000 (Workspace) per hari | Mengikuti kebijakan batas pengiriman harian akun Gmail masing-masing pengguna. |
-| **Buku Kontak** | Maks. **200 kontak** / pengguna | Termasuk kontak aktif dan arsip; dihitung per pengguna (`MAX_CONTACTS_PER_USER = 200`). |
-| **Penerima per Batch** | Maks. **50 penerima** / batch | Menjaga kestabilan pengiriman bertahap di lingkungan serverless (`MAX_RECIPIENTS_PER_BATCH = 50`). |
-| **Lampiran Berkas** | Maks. **3 file** / penerima | Maks. **4 MB per file** (format `.pdf`, `.png`, `.jpg`) dan total ukuran lampiran **< 24 MB** per email. |
+| **Google Cloud Mode Testing** | Maks. **100 Test Users** | Selama aplikasi di Google Cloud Console berstatus *Testing*, alamat Gmail yang akan dihubungkan di `/app/settings` harus didaftarkan pada tab *Audience -> Test users*. |
+| **Masa Berlaku Token Testing** | **7 Hari** | Pada aplikasi berstatus *Testing*, *refresh token* Gmail kedaluwarsa setelah 7 hari. Jika terjadi, status berubah ke `revoked` dan pengguna cukup klik **"Hubungkan Ulang Gmail"**. |
+| **Kuota Harian Aplikasi** | **100 email / 24 jam / user** | Dihitung per pengguna dari `send_logs` (`event = 'sent'`) dalam 24 jam terakhir. |
+| **Kuota Google Gmail API** | ~500 (gratis) / ~2.000 (Workspace) per hari | Mengikuti kebijakan kuota harian akun Gmail pengirim. |
+| **Buku Kontak** | Maks. **200 kontak** / pengguna | Termasuk kontak aktif dan arsip (`MAX_CONTACTS_PER_USER = 200`). |
+| **Penerima per Batch** | Maks. **50 penerima** / batch | Menjaga kestabilan pengiriman bertahap di lingkungan serverless. |
+| **Lampiran Berkas** | Maks. **3 file** / penerima | Maks. **4 MB per file** (`.pdf`, `.png`, `.jpg`) dan total **< 24 MB** per email. |
 
 ---
 
 ## Panduan Menjalankan Secara Lokal
 
 ### Prasyarat
-- **Node.js**: versi `20.x`, `22.x`, atau `24.x`
-- **npm**: versi `10+` atau `11+`
+- **Node.js** `20.x` / `22.x` / `24.x` dan **npm** `10+`
 - Database Postgres (misal Neon Postgres)
 
 ### Langkah Instalasi
@@ -156,36 +152,25 @@ Pada kondisi simulasi:
    npm install
    ```
 
-2. **Salin template environment variable**:
+2. **Salin template environment variable & lengkapi `.env.local`**:
    ```bash
    cp .env.example .env.local
    ```
-   Lalu isi nilai variabel di `.env.local` (lihat bagian [Daftar Environment Variables](#daftar-environment-variables)).
-
-3. **Generate `AUTH_SECRET` dan `TOKEN_ENCRYPTION_KEY`**:
+   Generate kunci rahasia:
    ```bash
-   # AUTH_SECRET
-   openssl rand -base64 32
-
-   # TOKEN_ENCRYPTION_KEY (32-byte Base64)
+   # AUTH_SECRET & TOKEN_ENCRYPTION_KEY (jalankan 2 kali untuk 2 kunci berbeda)
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
 
-4. **Jalankan migrasi database (dan seed contoh fiktif jika perlu)**:
+3. **Jalankan migrasi database & buat akun admin pertama**:
    ```bash
    npm run db:migrate
-   npm run db:seed
+   npm run db:create-admin -- --email=admin@perusahaan.com --password=KataSandiKuat --name="Admin HR"
    ```
-   _Catatan: `db:seed` hanya mengisi data contoh fiktif (`@example.com`)._
 
-5. **Jalankan server pengembangan**:
+4. **Jalankan server pengembangan & pengujian**:
    ```bash
    npm run dev
-   ```
-   Buka [http://localhost:3000](http://localhost:3000).
-
-6. **Jalankan seluruh unit test & linting**:
-   ```bash
    npm test
    npm run lint
    ```
@@ -197,120 +182,73 @@ Pada kondisi simulasi:
 | Variabel | Contoh Nilai | Wajib | Keterangan |
 | :--- | :--- | :---: | :--- |
 | `DATABASE_URL` | `postgres://user:pass@ep-xyz.neon.tech/neondb?sslmode=require` | Ya | Connection string Postgres Neon Serverless |
-| `AUTH_SECRET` | `openssl rand -base64 32` | Ya | Kunci rahasia penandatangan JWT sesi Auth.js |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` (lokal) atau `https://app.vercel.app` | Ya | Origin URL aplikasi untuk membentuk `redirect_uri` OAuth Gmail |
-| `GOOGLE_CLIENT_ID` | `12345-abc.apps.googleusercontent.com` | Ya | Client ID OAuth 2.0 Web Application dari Google Cloud Console |
-| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxxxxxxx` | Ya | Client Secret OAuth 2.0 Google Cloud Console |
-| `TOKEN_ENCRYPTION_KEY` | `32-byte base64 string` | Ya | Kunci simetris enkripsi AES-256-GCM untuk refresh token Gmail |
+| `AUTH_SECRET` | `32-byte base64 string` | Ya | Kunci rahasia penandatangan JWT sesi Auth.js |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` atau `https://email-payslip.vercel.app` | Ya | Origin URL aplikasi untuk membentuk `redirect_uri` OAuth Gmail |
+| `GOOGLE_CLIENT_ID` | `12345-abc.apps.googleusercontent.com` | Ya (Gmail) | Client ID OAuth 2.0 Web Application (untuk `/api/gmail/connect`) |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxxxxxxx` | Ya (Gmail) | Client Secret OAuth 2.0 Google Cloud Console |
+| `TOKEN_ENCRYPTION_KEY` | `32-byte base64 string` | Ya | Kunci simetris enkripsi AES-256-GCM refresh token Gmail |
 | `BLOB_READ_WRITE_TOKEN` | `vercel_blob_rw_...` | Ya (Prod) | Token read/write Vercel Blob (lokal otomatis fallback ke mock store) |
 | `EMAIL_MODE` | `simulate` atau `live` | Ya | `simulate` untuk mock log; `live` untuk kirim email riil via Gmail |
-| `NEXT_PUBLIC_APP_NAME` | `Payslip Mailer` | Tidak | Nama aplikasi yang tampil di header dan subjek/isi email |
-
-> **Migrasi dari v1?** Variabel lama `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `GMAIL_REFRESH_TOKEN`, dan `GMAIL_SENDER` sudah **dihapus sepenuhnya** dan tidak lagi dipakai.
+| `NEXT_PUBLIC_APP_NAME` | `Payslip Mailer` | Tidak | Nama aplikasi yang tampil di header dan email |
 
 ---
 
 ## Checklist & Panduan Deploy ke Vercel
 
-### 1. Persiapan Repositori & Database
-- [ ] Pastikan file `.env` dan `.env.local` **tidak** ter-commit ke Git (sudah diabaikan oleh `.gitignore`).
-- [ ] Pastikan `git grep` tidak menemukan kunci rahasia atau token apa pun di dalam repositori.
+### 1. Persiapan Repositori & Storage
+- [ ] Pastikan file `.env` dan `.env.local` **tidak** ter-commit ke Git.
 - [ ] Import proyek ke [Vercel](https://vercel.com) (**Add New -> Project**).
-- [ ] Pasang integrasi **Neon Postgres** (otomatis mengisi `DATABASE_URL`) dan **Vercel Blob** (otomatis mengisi `BLOB_READ_WRITE_TOKEN`).
+- [ ] Tambahkan integrasi **Neon Postgres** (`DATABASE_URL`) dan **Vercel Blob (Access: Public)** (`BLOB_READ_WRITE_TOKEN` — pastikan tidak ada token placeholder `sample` lama di Settings).
 
 ### 2. Environment Variables Produksi di Vercel
-Tambahkan variabel berikut di **Project Settings -> Environment Variables**:
-- [ ] `DATABASE_URL` (dari integrasi Neon)
-- [ ] `BLOB_READ_WRITE_TOKEN` (dari integrasi Vercel Blob)
-- [ ] `AUTH_SECRET` (nilai acak baru khusus produksi)
-- [ ] `TOKEN_ENCRYPTION_KEY` (nilai 32-byte Base64 baru khusus produksi)
+Tambahkan variabel berikut di **Project Settings -> Environment Variables** dan centang **`Production`** serta **`Preview`** (jika deploy dari branch selain production branch):
+- [ ] `DATABASE_URL`
+- [ ] `BLOB_READ_WRITE_TOKEN`
+- [ ] `AUTH_SECRET`
+- [ ] `TOKEN_ENCRYPTION_KEY`
 - [ ] `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`
 - [ ] `EMAIL_MODE` = `live`
 - [ ] `NEXT_PUBLIC_APP_NAME` = `Payslip Mailer`
-- [ ] `NEXT_PUBLIC_APP_URL` = `https://<domain-anda>.vercel.app` _(tanpa garis miring di akhir)_
+- [ ] `NEXT_PUBLIC_APP_URL` = `https://<domain-anda>.vercel.app` _(wajib pakai `https://`, tanpa `/` di akhir; **hapus** `AUTH_URL`/`NEXTAUTH_URL` di Vercel)_
 
 ### 3. Redirect URI Produksi di Google Cloud Console
-Tambahkan URL produksi Vercel Anda ke **OAuth 2.0 Client ID** di Google Cloud Console:
-- [ ] **Authorized JavaScript origins**:
-  - `https://<domain-anda>.vercel.app`
-- [ ] **Authorized redirect URIs** (kedua path ini wajib ada):
-  - `https://<domain-anda>.vercel.app/api/auth/callback/google`
-  - `https://<domain-anda>.vercel.app/api/gmail/callback`
+Karena login menggunakan Credentials dan Google OAuth hanya dipakai untuk tombol **"Hubungkan Gmail"** di `/app/settings`, pastikan URI berikut terdaftar di **Authorized redirect URIs**:
+- [ ] `https://<domain-anda>.vercel.app/api/gmail/callback`
 
-### 4. Migrasi & Deploy
-- [ ] Jalankan migrasi ke database produksi dari lokal atau CI:
+### 4. Migrasi & Akun Admin Pertama di Produksi
+- [ ] Jalankan migrasi dan pembuatan akun admin pertama dengan `DATABASE_URL` menunjuk ke Neon produksi:
   ```bash
-  # Pastikan DATABASE_URL menunjuk ke DB produksi Neon sebelum menjalankan:
   npm run db:migrate
+  npm run db:create-admin -- --email=admin@perusahaan.com --password=KataSandiKuat --name="Admin HR"
   ```
-- [ ] Trigger deploy di Vercel hingga status *Ready*.
+- [ ] Lakukan **Redeploy** di Vercel setelah semua Environment Variables disimpan.
 
 ---
 
 ## Lampiran: Langkah Setup Google Cloud Console
 
-Ikuti panduan ini untuk menyiapkan kredensial Google OAuth yang dipakai oleh Login Google maupun tombol **"Hubungkan Gmail"**:
-
-1. **Buat Project Baru**:
-   - Buka [Google Cloud Console](https://console.cloud.google.com/).
-   - Buat project baru (misal `payslip-mailer`).
-2. **Aktifkan Gmail API**:
-   - Masuk ke **APIs & Services -> Library**.
-   - Cari **Gmail API**, lalu klik **Enable**.
-3. **Konfigurasi Google Auth Platform (OAuth Consent Screen)**:
-   - Masuk ke **Google Auth Platform -> Overview** (atau *APIs & Services -> OAuth consent screen*).
-   - **Branding**:
-     - Isi *App name* (misal `Payslip Mailer`) dan *User support email*.
-     - Isi *Developer contact information*.
-     - _(Jika hendak dipublikasikan ke **In Production**)_, isi juga:
-       - *Application home page*: `https://<domain-anda>.vercel.app`
-       - *Application privacy policy link*: `https://<domain-anda>.vercel.app/privacy`
-       - *Authorized domains*: domain Anda (harus terverifikasi di Google Search Console).
-   - **Audience**:
-     - Pilih tipe pengguna **External**.
-     - Untuk pengujian/internal tanpa verifikasi Google, biarkan status di **Testing** lalu tambahkan email Anda dan email penguji di bagian **Test users** (maks. 100 email).
-   - **Data Access (Scopes)**:
-     - Tambahkan scope:
-       - `openid`
-       - `email`
-       - `profile`
-       - `https://www.googleapis.com/auth/gmail.send`
-4. **Buat OAuth 2.0 Client ID**:
-   - Masuk ke menu **Clients** (atau *APIs & Services -> Credentials -> Create Credentials -> OAuth client ID*).
-   - Pilih Application type: **Web application**.
-   - Pada **Authorized JavaScript origins**, masukkan:
-     - `http://localhost:3000`
-     - `https://<domain-anda>.vercel.app` _(saat deploy)_
-   - Pada **Authorized redirect URIs**, masukkan **keempat** URI berikut (2 lokal, 2 produksi):
-     - `http://localhost:3000/api/auth/callback/google`
+1. **Buat Project & Aktifkan Gmail API**: Buka [Google Cloud Console](https://console.cloud.google.com/), buat project, lalu aktifkan **Gmail API** di *APIs & Services -> Library*.
+2. **Konfigurasi Google Auth Platform (OAuth Consent Screen)**:
+   - **Branding**: Isi *App name* (`Payslip Mailer`), *User support email*, dan *Developer contact information*.
+   - **Audience**: Pilih **External**. Untuk penggunaan internal/pribadi, biarkan status **Testing** dan tambahkan email Gmail yang akan dihubungkan pada bagian **Test users** (maks. 100 email).
+   - **Data Access (Scopes)**: Tambahkan `openid`, `email`, dan `https://www.googleapis.com/auth/gmail.send`.
+3. **Buat OAuth 2.0 Client ID (Web Application)**:
+   - **Authorized JavaScript origins**: `http://localhost:3000` dan `https://<domain-anda>.vercel.app`.
+   - **Authorized redirect URIs**:
      - `http://localhost:3000/api/gmail/callback`
-     - `https://<domain-anda>.vercel.app/api/auth/callback/google`
      - `https://<domain-anda>.vercel.app/api/gmail/callback`
-   - Klik **Create**, lalu salin **Client ID** ke `GOOGLE_CLIENT_ID` dan **Client Secret** ke `GOOGLE_CLIENT_SECRET`.
+   - Salin **Client ID** & **Client Secret** ke `GOOGLE_CLIENT_ID` & `GOOGLE_CLIENT_SECRET`.
 
 ---
 
 ## Checklist Pengujian Akhir (End-to-End QA)
 
-Verifikasi alur lengkap berikut pada URL produksi Vercel Anda:
-
-- [ ] **Halaman Publik & Privasi**:
-  - Beranda (`/`) dan `/privacy` dapat diakses tanpa login.
-  - Link **Kebijakan Privasi** muncul di footer beranda, footer dashboard (`/app`), dan layar `/login`.
-- [ ] **Autentikasi Dua Langkah**:
-  - Daftar/login menggunakan email & kata sandi berhasil masuk ke `/app` (status awal: *Simulasi - Gmail belum terhubung*).
-  - Masuk menggunakan **Google** berhasil masuk ke `/app` dan otomatis menghubungkan Gmail (tampil di `/app/settings`).
-  - Tombol **"Hubungkan Gmail"** di `/app/settings` untuk akun Credentials berhasil mengarahkan ke consent Google dan menyimpan token terenkripsi.
-- [ ] **Buku Kontak (`/app/contacts`)**:
-  - Tambah, ubah, cari, arsip, pulihkan, dan hapus permanen kontak berfungsi dengan batas maksimal 200 kontak.
-  - Impor massal CSV/Excel ke kontak berhasil melakukan *upsert* tanpa menduplikasi email yang sama.
-- [ ] **Batch, Lampiran & Pengiriman (`/app/batches/[id]`)**:
-  - Buat batch baru, tambah penerima dari **"Tambah dari Daftar"** (kontak yang sudah ada di batch tidak bisa dipilih ulang) dan **"Tambah Semua Kontak Aktif"** (menghormati batas 50 penerima).
-  - Unggah lampiran PDF/PNG/JPG (maks. 4 MB, maks. 3 file/penerima) berhasil masuk ke Vercel Blob dengan prefix `userId`.
-  - Pengiriman bertahap mengirim email nyata ke kotak masuk penerima dengan pengirim (`From`) sesuai alamat Gmail pengguna yang login.
-  - Lampiran di Vercel Blob otomatis terhapus setelah pengiriman berstatus `sent`.
-  - Duplikat batch menyalin daftar penerima tanpa file dan mereset status menjadi `pending`.
-- [ ] **Isolasi & Kontrol Privasi**:
-  - Pengguna A tidak dapat melihat, mengedit, mengunggah, atau mengirim data milik Pengguna B.
-  - Tombol **"Putuskan Gmail"** mencabut izin di Google dan menghapus token di DB.
-  - Tombol **"Hapus Akun dan Semua Data"** mencabut token, menghapus file Blob, dan menghapus seluruh data akun secara permanen.
+- [ ] **Halaman Publik & Autentikasi**:
+  - Beranda (`/`) dan `/privacy` tampil tanpa tombol Login Google atau daftar mandiri.
+  - Login di `/login` menolak kredensial salah, memicu rate limit setelah 5 kali gagal, dan menerima akun yang dibuat oleh admin.
+- [ ] **Manajemen Pengguna Admin (`/app/admin/users`)**:
+  - Pengguna ber-role `user` tidak melihat menu *Kelola Pengguna* dan otomatis diarahkan ke `/app` jika mengakses `/app/admin/users`.
+  - Admin dapat menambah user baru, mengubah role, mereset password, dan menghapus user lain.
+- [ ] **Koneksi Gmail, Kontak, Batch & Pengiriman**:
+  - User dapat menghubungkan & memutuskan Gmail pengirimnya di `/app/settings`.
+  - Fitur `/app/contacts`, impor CSV/Excel, batch, tambah dari daftar, unggah file ke Vercel Blob, dan kirim email Gmail (lampiran PDF/JPG terbuka utuh) berjalan normal.

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { requireUser, requireSession, getSession } from "./session";
+import { requireUser, requireAdmin, requireSession, getSession } from "./session";
+import { ForbiddenError } from "./isolation";
 import type { Session } from "next-auth";
 
 const mockAuth = vi.fn<() => Promise<Session | null>>();
@@ -58,5 +59,23 @@ describe("requireUser, requireSession & getSession helper", () => {
     mockAuth.mockResolvedValue(null);
     const session = await getSession();
     expect(session).toBeNull();
+  });
+
+  it("requireAdmin should reject unauthenticated and non-admin sessions, and allow admin", async () => {
+    mockAuth.mockResolvedValue(null);
+    await expect(requireAdmin()).rejects.toThrow("Unauthorized");
+
+    mockAuth.mockResolvedValue({
+      user: { id: "usr_1", email: "user@example.com", role: "user" },
+      expires: "2026-12-31T23:59:59.999Z",
+    });
+    await expect(requireAdmin()).rejects.toThrow(ForbiddenError);
+
+    mockAuth.mockResolvedValue({
+      user: { id: "adm_1", email: "admin@example.com", role: "admin" },
+      expires: "2026-12-31T23:59:59.999Z",
+    });
+    const admin = await requireAdmin();
+    expect(admin).toEqual({ userId: "adm_1", role: "admin" });
   });
 });

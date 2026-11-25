@@ -22,6 +22,7 @@ export default async function SettingsPage({
       connection={connection}
       userEmail={session?.user?.email}
       userName={session?.user?.name}
+      userRole={session?.user?.role}
       queryConnected={params.connected === "true"}
       queryError={params.error}
     />

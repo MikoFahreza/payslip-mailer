@@ -7,9 +7,11 @@ import { Mail, ShieldCheck } from "lucide-react";
 export default async function AppProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     redirect("/login");
   }
+
+  const isAdmin = session.user.role === "admin";
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
@@ -39,6 +41,14 @@ export default async function AppProtectedLayout({ children }: { children: React
               >
                 Daftar Kontak
               </Link>
+              {isAdmin && (
+                <Link
+                  href="/app/admin/users"
+                  className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                >
+                  Kelola Pengguna
+                </Link>
+              )}
               <Link
                 href="/app/settings"
                 className="hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
@@ -63,11 +73,43 @@ export default async function AppProtectedLayout({ children }: { children: React
               <span className="font-medium text-neutral-700 dark:text-neutral-300">
                 {session.user.name || session.user.email}
               </span>
+              {isAdmin && (
+                <span className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-purple-100 text-purple-700 dark:bg-purple-950/70 dark:text-purple-300">
+                  Admin
+                </span>
+              )}
             </div>
 
             <LogoutButton />
           </div>
         </div>
+
+        {/* Mobile Navigation */}
+        <nav className="md:hidden border-t border-neutral-200 dark:border-neutral-800 px-4 py-2 flex items-center gap-4 overflow-x-auto text-xs font-medium text-neutral-600 dark:text-neutral-400">
+          <Link href="/app" className="whitespace-nowrap hover:text-neutral-900 dark:hover:text-neutral-100">
+            Batch
+          </Link>
+          <Link
+            href="/app/contacts"
+            className="whitespace-nowrap hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Kontak
+          </Link>
+          {isAdmin && (
+            <Link
+              href="/app/admin/users"
+              className="whitespace-nowrap text-purple-700 dark:text-purple-400 font-semibold"
+            >
+              Kelola Pengguna
+            </Link>
+          )}
+          <Link
+            href="/app/settings"
+            className="whitespace-nowrap hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            Pengaturan
+          </Link>
+        </nav>
       </header>
 
       <main className="flex-1 container mx-auto px-4 py-8">{children}</main>

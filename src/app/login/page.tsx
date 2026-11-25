@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ArrowLeft, Mail } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Masuk / Daftar — Payslip Mailer",
-  description: "Masuk atau daftar ke sistem pengiriman slip gaji dan bukti transfer karyawan.",
+  title: "Masuk — Payslip Mailer",
+  description: "Masuk ke sistem pengiriman slip gaji dan bukti transfer karyawan.",
 };
 
 export default async function LoginPage({
@@ -17,7 +17,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const session = await auth();
-  if (session?.user) {
+  if (session?.user?.id) {
     redirect("/app");
   }
 
@@ -42,7 +42,7 @@ export default async function LoginPage({
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">Payslip Mailer</CardTitle>
           <CardDescription className="text-xs">
-            Masuk dengan Google (langsung siap kirim) atau gunakan email Anda.
+            Masuk menggunakan email dan kata sandi yang didaftarkan oleh administrator.
           </CardDescription>
         </CardHeader>
 
@@ -51,7 +51,7 @@ export default async function LoginPage({
 
           <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 text-center">
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              Dengan masuk atau mendaftar, Anda menyetujui{" "}
+              Dengan masuk ke aplikasi, Anda menyetujui{" "}
               <Link
                 href="/privacy"
                 className="text-neutral-700 dark:text-neutral-300 hover:underline font-medium"

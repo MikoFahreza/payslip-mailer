@@ -1,28 +1,15 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { users, gmailConnections } from "@/lib/db/schema";
+import { users, type UserRole } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { normalizeEmail } from "@/lib/utils";
-import { encrypt } from "@/lib/crypto/encryption";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   trustHost: true,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      authorization: {
-        params: {
-          scope: "openid email profile https://www.googleapis.com/auth/gmail.send",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    }),
     Credentials({
       name: "Email & Password",
       credentials: {
@@ -61,6 +48,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             email: user.email,
             name: user.name,
             image: user.image,
+            role: user.role,
           };
         } catch (err) {
           console.error("[Auth] Error during credentials authorize:", err);
@@ -76,77 +64,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
   },
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user }) {
       if (!user.email) {
         console.error("[Auth] Login gagal: akun tidak memiliki alamat email.");
         return false;
       }
-
-      const email = normalizeEmail(user.email);
-
-      // Handle Google Provider: auto upsert user & auto connect Gmail if refresh_token returned
-      if (account?.provider === "google") {
-        const name = user.name || null;
-        const image = user.image || null;
-
-        const url = process.env.DATABASE_URL;
-        if (url && !url.includes("ep-sample-pooler")) {
-          try {
-            // 1. Upsert user into users table
-            const [savedUser] = await db
-              .insert(users)
-              .values({
-                email,
-                name,
-                image,
-              })
-              .onConflictDoUpdate({
-                target: [users.email],
-                set: {
-                  ...(name ? { name } : {}),
-                  ...(image ? { image } : {}),
-                },
-              })
-              .returning();
-
-            // 2. If Google returned a refresh_token, encrypt and auto-connect Gmail
-            if (account.refresh_token && savedUser?.id) {
-              const encryptedToken = encrypt(account.refresh_token);
-              await db
-                .insert(gmailConnections)
-                .values({
-                  userId: savedUser.id,
-                  gmailEmail: email,
-                  refreshTokenEncrypted: encryptedToken,
-                  scope:
-                    account.scope ||
-                    "openid email profile https://www.googleapis.com/auth/gmail.send",
-                  status: "connected",
-                  connectedAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .onConflictDoUpdate({
-                  target: [gmailConnections.userId],
-                  set: {
-                    gmailEmail: email,
-                    refreshTokenEncrypted: encryptedToken,
-                    scope:
-                      account.scope ||
-                      "openid email profile https://www.googleapis.com/auth/gmail.send",
-                    status: "connected",
-                    updatedAt: new Date(),
-                  },
-                });
-            }
-          } catch (error) {
-            console.error("[Auth] Gagal upsert user atau auto-connect gmail_connections:", error);
-          }
-        }
-      }
-
       return true;
     },
     async jwt({ token, user }) {
+      if (user) {
+        token.userId = user.id;
+        token.id = user.id;
+        token.role = user.role || "user";
+      }
+
       const rawEmail = (user?.email || token.email) as string | undefined;
       if (rawEmail) {
         const email = normalizeEmail(rawEmail);
@@ -163,6 +94,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               token.id = dbUser.id;
               token.name = dbUser.name ?? token.name;
               token.picture = dbUser.image ?? token.picture;
+              token.role = dbUser.role;
+            } else {
+              // User was removed from database -> revoke active session token
+              token.userId = "";
+              token.id = "";
+              token.role = undefined;
             }
           } catch (dbErr) {
             console.warn("[Auth Warning] Gagal query user saat jwt callback:", dbErr);
@@ -170,7 +107,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       }
 
-      // Fallback ID if database lookup is skipped (e.g. test environments)
       if (!token.userId && token.id) {
         token.userId = token.id as string;
       }
@@ -179,10 +115,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     session({ session, token }) {
       if (session.user && token) {
-        session.user.id = (token.userId || token.id || token.sub) as string;
+        session.user.id = (token.userId || token.id || "") as string;
         session.user.email = (token.email as string) || session.user.email;
         session.user.name = (token.name as string) || session.user.name;
         session.user.image = (token.picture as string) || session.user.image;
+        session.user.role = (token.role as UserRole) || "user";
       }
       return session;
     },

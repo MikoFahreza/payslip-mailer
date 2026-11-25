@@ -1,13 +1,13 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { users, gmailConnections, attachments, recipients, batches } from "@/lib/db/schema";
-import { requireUser } from "@/lib/auth/session";
+import { gmailConnections, users } from "@/lib/db/schema";
 import { decrypt } from "@/lib/crypto/encryption";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 import { signOut } from "@/auth";
+import { requireUser } from "@/lib/auth/session";
+import { cleanupUserExternalResources } from "@/lib/actions/user-cleanup";
 
 export interface GmailConnectionInfo {
   connected: boolean;
@@ -56,7 +56,6 @@ export async function disconnectGmailAction() {
     if (connection?.refreshTokenEncrypted) {
       try {
         const refreshToken = decrypt(connection.refreshTokenEncrypted);
-        // Call Google OAuth revocation endpoint
         await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -66,7 +65,6 @@ export async function disconnectGmailAction() {
       }
     }
 
-    // Delete connection record from database
     await db.delete(gmailConnections).where(eq(gmailConnections.userId, userId));
 
     revalidatePath("/app/settings");
@@ -83,51 +81,9 @@ export async function deleteAccountAction() {
   const userId = await requireUser();
 
   try {
-    // 1. Revoke Gmail token if exists
-    const connection = await db.query.gmailConnections.findFirst({
-      where: eq(gmailConnections.userId, userId),
-    });
-
-    if (connection?.refreshTokenEncrypted) {
-      try {
-        const refreshToken = decrypt(connection.refreshTokenEncrypted);
-        await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refreshToken)}`, {
-          method: "POST",
-        });
-      } catch (err) {
-        console.warn("[deleteAccount Warning]: Gagal revoke token Google:", err);
-      }
-    }
-
-    // 2. Clean up user's Vercel Blob files
-    const userBatches = await db
-      .select({ id: batches.id })
-      .from(batches)
-      .where(eq(batches.userId, userId));
-
-    const batchIds = userBatches.map((b) => b.id);
-    if (batchIds.length > 0) {
-      const userAttachments = await db
-        .select({ blobUrl: attachments.blobUrl })
-        .from(attachments)
-        .innerJoin(recipients, eq(attachments.recipientId, recipients.id))
-        .where(inArray(recipients.batchId, batchIds));
-
-      if (userAttachments.length > 0) {
-        try {
-          await deleteRemoteBlobs(userAttachments.map((a) => a.blobUrl));
-        } catch (blobErr) {
-          console.warn("[deleteAccount Warning]: Gagal menghapus file Blob:", blobErr);
-        }
-      }
-    }
-
-    // 3. Delete user row in DB (cascades to batches, contacts, gmailConnections, sendLogs)
+    await cleanupUserExternalResources(userId);
     await db.delete(users).where(eq(users.id, userId));
-
-    // 4. Sign out
     await signOut({ redirectTo: "/" });
-
     return { success: true };
   } catch (err: unknown) {
     const error = err as Error;

@@ -25,7 +25,7 @@ export default function HomePage() {
         <div className="max-w-3xl text-center space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
             <Shield className="w-3.5 h-3.5 text-emerald-500" />
-            Prototipe Pengiriman Slip Gaji Karyawan yang Andal & Aman
+            Sistem Pengiriman Slip Gaji Karyawan Terkelola &amp; Aman
           </div>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-neutral-950 dark:text-white">

@@ -26,12 +26,14 @@ export function SettingsView({
   connection,
   userEmail,
   userName,
+  userRole,
   queryConnected,
   queryError,
 }: {
   connection: GmailConnectionInfo;
   userEmail?: string | null;
   userName?: string | null;
+  userRole?: "admin" | "user";
   queryConnected?: boolean;
   queryError?: string | null;
 }) {
@@ -108,9 +110,15 @@ export function SettingsView({
             <span className="text-neutral-500">Nama Pengguna</span>
             <span className="font-semibold text-neutral-900 dark:text-neutral-100">{userName || "Pengguna"}</span>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 text-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 border-b border-neutral-100 dark:border-neutral-800 text-sm">
             <span className="text-neutral-500">Alamat Email</span>
             <span className="font-semibold text-neutral-900 dark:text-neutral-100">{userEmail || "-"}</span>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2 text-sm">
+            <span className="text-neutral-500">Peran Akun</span>
+            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
+              {userRole === "admin" ? "Administrator" : "Pengguna (Operator)"}
+            </span>
           </div>
         </CardContent>
       </Card>

@@ -107,7 +107,7 @@ async function runSeed() {
   const sql = neon(url);
   const db = drizzle(sql, { schema });
 
-  // 1. Upsert User
+  // 1. Upsert User (with role)
   console.log(`👤 Menyimpan pengguna contoh: ${dummySeedData.user.email}`);
   const [user] = await db
     .insert(schema.users)
@@ -115,6 +115,7 @@ async function runSeed() {
       name: dummySeedData.user.name,
       email: normalizeEmail(dummySeedData.user.email),
       image: dummySeedData.user.image,
+      role: "user",
     })
     .onConflictDoUpdate({
       target: [schema.users.email],

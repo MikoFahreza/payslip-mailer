@@ -77,9 +77,8 @@ export default function PrivacyPage() {
                 <strong className="text-neutral-900 dark:text-neutral-200">
                   Identitas Akun Pengguna:
                 </strong>{" "}
-                Nama, alamat email, serta URL foto profil yang diterima saat Anda masuk dengan akun
-                Google (atau nama, email, dan hash kata sandi terenkripsi <em>bcrypt</em> bila
-                mendaftar secara manual).
+                Nama, alamat email, peran akun (<em>admin</em> atau <em>user</em>), serta hash kata
+                sandi terenkripsi <em>bcrypt</em> untuk akun yang didaftarkan oleh administrator.
               </li>
               <li>
                 <strong className="text-neutral-900 dark:text-neutral-200">
@@ -228,7 +227,7 @@ export default function PrivacyPage() {
             href="/login"
             className="hover:text-neutral-900 dark:hover:text-neutral-200 underline"
           >
-            Masuk / Daftar
+            Masuk
           </Link>
         </div>
       </footer>
