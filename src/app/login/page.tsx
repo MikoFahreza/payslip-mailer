@@ -46,8 +46,21 @@ export default async function LoginPage({
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="pt-2">
+        <CardContent className="pt-2 space-y-4">
           <AuthForm initialError={error} />
+
+          <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 text-center">
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              Dengan masuk atau mendaftar, Anda menyetujui{" "}
+              <Link
+                href="/privacy"
+                className="text-neutral-700 dark:text-neutral-300 hover:underline font-medium"
+              >
+                Kebijakan Privasi
+              </Link>{" "}
+              kami.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </main>

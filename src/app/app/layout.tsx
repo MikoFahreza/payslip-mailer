@@ -73,7 +73,16 @@ export default async function AppProtectedLayout({ children }: { children: React
       <main className="flex-1 container mx-auto px-4 py-8">{children}</main>
 
       <footer className="border-t border-neutral-200 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500">
-        <p>Payslip Mailer — Sistem Pengiriman Slip Gaji Karyawan</p>
+        <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
+          <p>Payslip Mailer — Sistem Pengiriman Slip Gaji Karyawan</p>
+          <span className="hidden sm:inline">•</span>
+          <Link
+            href="/privacy"
+            className="hover:text-neutral-900 dark:hover:text-neutral-200 underline underline-offset-4 transition-colors"
+          >
+            Kebijakan Privasi
+          </Link>
+        </div>
       </footer>
     </div>
   );

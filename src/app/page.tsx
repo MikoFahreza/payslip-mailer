@@ -280,8 +280,17 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-neutral-100 dark:border-neutral-800 py-6 text-center text-xs text-neutral-400">
-        <p>Payslip Mailer — Prototipe Portofolio Kualitas Kode & UX</p>
+      <footer className="border-t border-neutral-100 dark:border-neutral-800 py-6 text-center text-xs text-neutral-500 dark:text-neutral-400">
+        <div className="container mx-auto px-4 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
+          <p>Payslip Mailer — Sistem Pengiriman Slip Gaji Karyawan</p>
+          <span className="hidden sm:inline">•</span>
+          <Link
+            href="/privacy"
+            className="hover:text-neutral-900 dark:hover:text-neutral-200 underline underline-offset-4 transition-colors"
+          >
+            Kebijakan Privasi
+          </Link>
+        </div>
       </footer>
     </div>
   );
