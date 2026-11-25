@@ -19,8 +19,6 @@ export const proxy = auth((req) => {
   return NextResponse.next();
 });
 
-export default proxy;
-
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { normalizeEmail } from "@/lib/utils";
 import { encrypt } from "@/lib/crypto/encryption";
 
-export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
+export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   trustHost: true,
   providers: [
@@ -187,4 +187,4 @@ export const { handlers, signIn, signOut, auth } = NextAuth(() => ({
       return session;
     },
   },
-}));
+});
