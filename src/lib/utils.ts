@@ -13,3 +13,18 @@ export function normalizeEmail(email: string | null | undefined): string {
   if (!email) return "";
   return email.trim().toLowerCase();
 }
+
+/**
+ * Normalizes a configured app URL/origin, ensuring an http(s) scheme is present
+ * and returning its clean origin (no trailing slash), or empty string if invalid.
+ */
+export function normalizeAppOrigin(rawUrl: string | null | undefined): string {
+  const trimmed = (rawUrl || "").trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    return new URL(withScheme).origin;
+  } catch {
+    return "";
+  }
+}

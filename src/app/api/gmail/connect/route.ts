@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/session";
+import { normalizeAppOrigin } from "@/lib/utils";
 import crypto from "crypto";
 import { cookies } from "next/headers";
 
@@ -21,7 +22,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // 1. Resolve application origin URL
-  const configuredOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || "").trim().replace(/\/$/, "");
+  const configuredOrigin = normalizeAppOrigin(
+    process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL
+  );
   const origin = configuredOrigin || new URL(request.url).origin;
 
   const redirectUri = `${origin}/api/gmail/callback`;

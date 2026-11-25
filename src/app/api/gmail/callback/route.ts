@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { gmailConnections } from "@/lib/db/schema";
 import { encrypt } from "@/lib/crypto/encryption";
-import { normalizeEmail } from "@/lib/utils";
+import { normalizeAppOrigin, normalizeEmail } from "@/lib/utils";
 import { cookies } from "next/headers";
 
 export async function GET(request: Request): Promise<NextResponse> {
@@ -65,7 +65,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   // 2. Exchange authorization code for tokens
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const configuredOrigin = (process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || "").trim().replace(/\/$/, "");
+  const configuredOrigin = normalizeAppOrigin(
+    process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL
+  );
   const origin = configuredOrigin || url.origin;
   const redirectUri = `${origin}/api/gmail/callback`;
 
