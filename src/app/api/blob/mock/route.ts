@@ -26,8 +26,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     saveMockFile(id, buffer, file.type || "application/octet-stream", file.name);
 
+    const origin = new URL(request.url).origin;
     return NextResponse.json({
-      url: `/api/blob/mock/${id}`,
+      url: `${origin}/api/blob/mock/${id}`,
       pathname,
     });
   } catch (err: unknown) {

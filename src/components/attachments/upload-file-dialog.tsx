@@ -90,14 +90,16 @@ export function UploadFileDialog({
     try {
       let blobResult: { url: string; pathname: string; contentType: string };
 
-      // Check if running in mock/sample mode
+      // Check upload mode (Vercel Blob vs local mock) and current userId
       const tokenCheck = await fetch("/api/blob/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "blob.generate-client-token" }),
+        method: "GET",
       });
 
       const tokenData = await tokenCheck.json();
+      if (!tokenCheck.ok || !tokenData.userId) {
+        throw new Error(tokenData.error || "Gagal memeriksa konfigurasi penyimpanan file.");
+      }
+
       const pathname = generateSecureBlobPathname(recipientId, selectedFile.name, tokenData.userId);
 
       if (tokenData.isMock) {

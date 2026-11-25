@@ -4,8 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { assertOwnsRecipient, assertOwnsBlobPathname } from "@/lib/auth/isolation";
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/validations/attachment";
 
-export async function POST(request: Request): Promise<NextResponse> {
-  // 1. Enforce user authentication on route handler
+export async function GET(): Promise<NextResponse> {
   let userId: string;
   try {
     userId = await requireUser();
@@ -14,6 +13,32 @@ export async function POST(request: Request): Promise<NextResponse> {
       { error: "Unauthorized: Sesi tidak valid atau belum masuk." },
       { status: 401 }
     );
+  }
+
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const isMock = !token || token.includes("sample");
+
+  return NextResponse.json({
+    isMock,
+    userId,
+  });
+}
+
+export async function POST(request: Request): Promise<NextResponse> {
+  const body = (await request.json()) as HandleUploadBody;
+
+  // For client token generation, enforce user authentication.
+  // For "blob.upload-completed" webhook, handleUpload verifies x-vercel-signature.
+  let userId: string | null = null;
+  if (body?.type !== "blob.upload-completed") {
+    try {
+      userId = await requireUser();
+    } catch {
+      return NextResponse.json(
+        { error: "Unauthorized: Sesi tidak valid atau belum masuk." },
+        { status: 401 }
+      );
+    }
   }
 
   const token = process.env.BLOB_READ_WRITE_TOKEN;
@@ -35,13 +60,15 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
   }
 
-  const body = (await request.json()) as HandleUploadBody;
-
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
+        if (!userId) {
+          throw new Error("Unauthorized: Sesi pengguna tidak ditemukan.");
+        }
+
         // Enforce that blob pathname is scoped to this user
         assertOwnsBlobPathname(pathname, userId);
 
@@ -63,9 +90,6 @@ export async function POST(request: Request): Promise<NextResponse> {
           maximumSizeInBytes: MAX_FILE_SIZE_BYTES,
           tokenPayload: clientPayload,
         };
-      },
-      onUploadCompleted: async () => {
-        // Handled via explicit server action saveAttachmentMetadata
       },
     });
 
