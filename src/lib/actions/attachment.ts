@@ -17,7 +17,7 @@ import {
 } from "@/lib/validations/attachment";
 import { eq, and, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { del } from "@vercel/blob";
+import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 import { deleteMockFile } from "@/lib/storage/mock-store";
 
 export async function saveAttachment(batchId: string, recipientId: string, input: AttachmentInput) {
@@ -126,16 +126,13 @@ export async function deleteAttachment(attachmentId: string, recipientId: string
       const fileId = attachment.blobUrl.split("/api/blob/mock/").pop()?.split("?")[0] || "";
       deleteMockFile(fileId);
     } else {
-      const token = process.env.BLOB_READ_WRITE_TOKEN;
-      if (token && !token.includes("sample") && !attachment.blobUrl.includes("mock")) {
-        try {
-          await del(attachment.blobUrl);
-        } catch (blobErr) {
-          console.warn(
-            "[deleteAttachment Blob Warning]: Gagal menghapus dari Vercel Blob:",
-            blobErr
-          );
-        }
+      try {
+        await deleteRemoteBlobs([attachment.blobUrl]);
+      } catch (blobErr) {
+        console.warn(
+          "[deleteAttachment Blob Warning]: Gagal menghapus dari Vercel Blob:",
+          blobErr
+        );
       }
     }
 

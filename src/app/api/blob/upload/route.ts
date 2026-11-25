@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/session";
 import { assertOwnsRecipient, assertOwnsBlobPathname } from "@/lib/auth/isolation";
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from "@/lib/validations/attachment";
+import { resolveBlobToken, formatMissingBlobError } from "@/lib/storage/blob-config";
 
 export async function GET(): Promise<NextResponse> {
   let userId: string;
@@ -15,14 +16,14 @@ export async function GET(): Promise<NextResponse> {
     );
   }
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  const isMock = !token || token.includes("sample");
+  const blobResolution = resolveBlobToken();
+  const isMock = !blobResolution.token;
 
   if (isMock && process.env.VERCEL === "1") {
     return NextResponse.json(
       {
-        error:
-          "Konfigurasi Vercel Blob (BLOB_READ_WRITE_TOKEN) belum aktif di server Vercel. Tambahkan Vercel Blob di tab Storage lalu redeploy.",
+        error: formatMissingBlobError(blobResolution),
+        reason: blobResolution.status,
       },
       { status: 500 }
     );
@@ -51,16 +52,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  const isSampleToken = !token || token.includes("sample");
+  const blobResolution = resolveBlobToken();
+  const token = blobResolution.token;
 
-  // If running in development with sample placeholder token, provide simulated token
-  if (isSampleToken) {
+  // If running in development without a live token, provide simulated token
+  if (!token) {
     if (process.env.VERCEL === "1") {
       return NextResponse.json(
         {
-          error:
-            "Konfigurasi Vercel Blob (BLOB_READ_WRITE_TOKEN) belum aktif di server Vercel.",
+          error: formatMissingBlobError(blobResolution),
+          reason: blobResolution.status,
         },
         { status: 500 }
       );
@@ -82,6 +83,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const jsonResponse = await handleUpload({
+      token,
       body,
       request,
       onBeforeGenerateToken: async (pathname, clientPayload) => {

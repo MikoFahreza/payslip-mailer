@@ -7,7 +7,7 @@ import { assertOwnsBatch } from "@/lib/auth/isolation";
 import { batchSchema } from "@/lib/validations/batch";
 import { eq, desc, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { del } from "@vercel/blob";
+import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 
 export interface BatchSummary {
   id: string;
@@ -189,17 +189,11 @@ export async function deleteBatch(id: string) {
       .innerJoin(recipients, eq(attachments.recipientId, recipients.id))
       .where(eq(recipients.batchId, id));
 
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (token && !token.includes("sample") && batchAttachments.length > 0) {
-      const urlsToDelete = batchAttachments
-        .map((a) => a.blobUrl)
-        .filter((url) => !url.includes("mock"));
-      if (urlsToDelete.length > 0) {
-        try {
-          await del(urlsToDelete);
-        } catch (blobErr) {
-          console.warn("[deleteBatch Blob Warning]:", blobErr);
-        }
+    if (batchAttachments.length > 0) {
+      try {
+        await deleteRemoteBlobs(batchAttachments.map((a) => a.blobUrl));
+      } catch (blobErr) {
+        console.warn("[deleteBatch Blob Warning]:", blobErr);
       }
     }
 

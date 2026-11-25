@@ -7,7 +7,7 @@ import { assertOwnsBatch, assertOwnsRecipient, assertOwnsContact } from "@/lib/a
 import { recipientSchema } from "@/lib/validations/recipient";
 import { eq, and, ne, count } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { del } from "@vercel/blob";
+import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 
 export async function addRecipient(
   batchId: string,
@@ -219,20 +219,14 @@ export async function deleteRecipient(id: string, batchId: string) {
       .from(attachments)
       .where(eq(attachments.recipientId, id));
 
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (token && !token.includes("sample") && recipientAttachments.length > 0) {
-      const urlsToDelete = recipientAttachments
-        .map((a) => a.blobUrl)
-        .filter((url) => !url.includes("mock"));
-      if (urlsToDelete.length > 0) {
-        try {
-          await del(urlsToDelete);
-        } catch (blobErr) {
-          console.warn(
-            "[deleteRecipient Blob Warning]: Gagal menghapus file dari Vercel Blob:",
-            blobErr
-          );
-        }
+    if (recipientAttachments.length > 0) {
+      try {
+        await deleteRemoteBlobs(recipientAttachments.map((a) => a.blobUrl));
+      } catch (blobErr) {
+        console.warn(
+          "[deleteRecipient Blob Warning]: Gagal menghapus file dari Vercel Blob:",
+          blobErr
+        );
       }
     }
 

@@ -9,7 +9,7 @@ import { generateEmailHtml, generateEmailText } from "@/lib/email/template";
 import { EmailAttachment } from "@/lib/email/types";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { del } from "@vercel/blob";
+import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 import { getMockFile, deleteMockFile } from "@/lib/storage/mock-store";
 import { DAILY_SEND_LIMIT, DailyQuotaResult, SendRecipientResult } from "./send-types";
 
@@ -305,18 +305,9 @@ export async function sendRecipient(recipientId: string): Promise<SendRecipientR
         }
       }
 
-      // Clean up remote Vercel Blob files
-      const urlsToDelete = attRows
-        .map((a) => a.blobUrl)
-        .filter(
-          (url) => url.startsWith("https://") && !url.includes("mock") && !url.includes("localhost")
-        );
-
-      if (urlsToDelete.length > 0) {
-        await del(urlsToDelete).catch((delErr) =>
-          console.warn("[sendRecipient] Gagal membersihkan blob:", delErr)
-        );
-      }
+      await deleteRemoteBlobs(attRows.map((a) => a.blobUrl)).catch((delErr) =>
+        console.warn("[sendRecipient] Gagal membersihkan blob:", delErr)
+      );
       // Clean up attachment rows from database
       await db.delete(attachments).where(eq(attachments.recipientId, recipient.id));
     }
@@ -441,12 +432,7 @@ export async function resolveUnknownStatus(
           deleteMockFile(fileId);
         }
       }
-      const urls = atts
-        .map((a) => a.blobUrl)
-        .filter((u) => u.startsWith("https://") && !u.includes("mock") && !u.includes("localhost"));
-      if (urls.length > 0) {
-        await del(urls).catch(console.warn);
-      }
+      await deleteRemoteBlobs(atts.map((a) => a.blobUrl)).catch(console.warn);
       await db.delete(attachments).where(eq(attachments.recipientId, recipientId));
     }
   } else {

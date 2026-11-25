@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth/session";
 import { decrypt } from "@/lib/crypto/encryption";
 import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { del } from "@vercel/blob";
+import { deleteRemoteBlobs } from "@/lib/storage/blob-config";
 import { signOut } from "@/auth";
 
 export interface GmailConnectionInfo {
@@ -113,13 +113,9 @@ export async function deleteAccountAction() {
         .innerJoin(recipients, eq(attachments.recipientId, recipients.id))
         .where(inArray(recipients.batchId, batchIds));
 
-      const urlsToDelete = userAttachments
-        .map((a) => a.blobUrl)
-        .filter((u) => u.startsWith("https://") && !u.includes("mock") && !u.includes("localhost"));
-
-      if (urlsToDelete.length > 0) {
+      if (userAttachments.length > 0) {
         try {
-          await del(urlsToDelete);
+          await deleteRemoteBlobs(userAttachments.map((a) => a.blobUrl));
         } catch (blobErr) {
           console.warn("[deleteAccount Warning]: Gagal menghapus file Blob:", blobErr);
         }
